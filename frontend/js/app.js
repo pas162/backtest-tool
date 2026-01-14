@@ -11,9 +11,11 @@ const elements = {
     startDate: document.getElementById('startDate'),
     endDate: document.getElementById('endDate'),
     strategy: document.getElementById('strategy'),
-    fetchDataBtn: document.getElementById('fetchDataBtn'),
     runBacktestBtn: document.getElementById('runBacktestBtn'),
     status: document.getElementById('status'),
+    progressSection: document.getElementById('progressSection'),
+    progressFill: document.getElementById('progressFill'),
+    progressText: document.getElementById('progressText'),
     // Metrics
     returnPct: document.getElementById('returnPct'),
     winRate: document.getElementById('winRate'),
@@ -33,6 +35,22 @@ const paramInputs = {
     st_length: document.getElementById('st_length'),
     st_multiplier: document.getElementById('st_multiplier'),
 };
+
+/**
+ * Show progress bar
+ */
+function showProgress(text, percent = 0) {
+    elements.progressSection.style.display = 'block';
+    elements.progressText.textContent = text;
+    elements.progressFill.style.width = `${percent}%`;
+}
+
+/**
+ * Hide progress bar
+ */
+function hideProgress() {
+    elements.progressSection.style.display = 'none';
+}
 
 /**
  * Show status message
@@ -62,46 +80,28 @@ function getStrategyParams() {
 }
 
 /**
- * Fetch data from Binance
- */
-async function fetchData() {
-    showStatus('Fetching data from Binance...', 'loading');
-    elements.fetchDataBtn.disabled = true;
-
-    try {
-        const response = await fetch(`${API_BASE}/data/fetch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                symbol: elements.symbol.value,
-                timeframe: elements.timeframe.value,
-                start_date: elements.startDate.value,
-                end_date: elements.endDate.value,
-            }),
-        });
-
-        const data = await response.json();
-        
-        if (response.ok) {
-            showStatus(`✅ Fetched ${data.candles_count} candles`, 'success');
-        } else {
-            showStatus(`❌ Error: ${data.detail || 'Unknown error'}`, 'error');
-        }
-    } catch (error) {
-        showStatus(`❌ Error: ${error.message}`, 'error');
-    } finally {
-        elements.fetchDataBtn.disabled = false;
-    }
-}
-
-/**
- * Run backtest
+ * Run backtest (auto-fetches data if needed)
  */
 async function runBacktest() {
-    showStatus('Running backtest...', 'loading');
     elements.runBacktestBtn.disabled = true;
+    hideStatus();
 
     try {
+        // Step 1: Show progress - Fetching data
+        showProgress('📥 Fetching data from Binance (if needed)...', 10);
+
+        // Simulate progress while waiting
+        let progress = 10;
+        const progressInterval = setInterval(() => {
+            if (progress < 90) {
+                progress += Math.random() * 5;
+                const stage = progress < 40 ? 'Fetching data...' :
+                    progress < 70 ? 'Running backtest...' :
+                        'Calculating metrics...';
+                showProgress(`⏳ ${stage}`, Math.min(progress, 90));
+            }
+        }, 500);
+
         const response = await fetch(`${API_BASE}/backtest/run`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -115,15 +115,33 @@ async function runBacktest() {
             }),
         });
 
+        clearInterval(progressInterval);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = 'Unknown error';
+            try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.detail || errorMessage;
+            } catch {
+                errorMessage = errorText.substring(0, 100);
+            }
+            throw new Error(errorMessage);
+        }
+
         const data = await response.json();
 
-        if (response.ok) {
+        // Step 3: Complete
+        showProgress('✅ Backtest complete!', 100);
+
+        setTimeout(() => {
+            hideProgress();
             displayResults(data);
-            showStatus('✅ Backtest completed!', 'success');
-        } else {
-            showStatus(`❌ Error: ${data.detail || 'Unknown error'}`, 'error');
-        }
+            showStatus(`✅ Completed! ${data.trades.length} trades found.`, 'success');
+        }, 500);
+
     } catch (error) {
+        hideProgress();
         showStatus(`❌ Error: ${error.message}`, 'error');
     } finally {
         elements.runBacktestBtn.disabled = false;
@@ -134,13 +152,8 @@ async function runBacktest() {
  * Display backtest results
  */
 function displayResults(data) {
-    // Update metrics
     updateMetrics(data.metrics);
-    
-    // Draw equity curve
     drawEquityCurve(data.equity_curve);
-    
-    // Populate trades table
     populateTradesTable(data.trades);
 }
 
@@ -148,8 +161,8 @@ function displayResults(data) {
  * Update metrics cards
  */
 function updateMetrics(metrics) {
-    const formatPct = (val) => val ? `${val.toFixed(2)}%` : '-';
-    const formatNum = (val) => val ? val.toFixed(2) : '-';
+    const formatPct = (val) => val != null ? `${val.toFixed(2)}%` : '-';
+    const formatNum = (val) => val != null ? val.toFixed(2) : '-';
 
     elements.returnPct.textContent = formatPct(metrics.return_pct);
     elements.returnPct.className = `metric-value ${metrics.return_pct >= 0 ? 'positive' : 'negative'}`;
@@ -160,7 +173,7 @@ function updateMetrics(metrics) {
     elements.maxDrawdown.textContent = formatPct(metrics.max_drawdown_pct);
     elements.maxDrawdown.className = 'metric-value negative';
 
-    elements.totalTrades.textContent = metrics.total_trades || '-';
+    elements.totalTrades.textContent = metrics.total_trades || '0';
 
     elements.sharpeRatio.textContent = formatNum(metrics.sharpe_ratio);
     elements.sharpeRatio.className = `metric-value ${metrics.sharpe_ratio >= 1 ? 'positive' : ''}`;
@@ -174,6 +187,7 @@ function updateMetrics(metrics) {
  */
 function drawEquityCurve(equityCurve) {
     if (!equityCurve || equityCurve.length === 0) {
+        Plotly.purge('equityChart');
         return;
     }
 
@@ -185,10 +199,7 @@ function drawEquityCurve(equityCurve) {
         y: equity,
         type: 'scatter',
         mode: 'lines',
-        line: {
-            color: '#238636',
-            width: 2,
-        },
+        line: { color: '#238636', width: 2 },
         fill: 'tozeroy',
         fillcolor: 'rgba(35, 134, 54, 0.1)',
     };
@@ -198,23 +209,12 @@ function drawEquityCurve(equityCurve) {
         plot_bgcolor: '#21262d',
         font: { color: '#c9d1d9' },
         margin: { l: 60, r: 30, t: 20, b: 40 },
-        xaxis: {
-            gridcolor: '#30363d',
-            tickformat: '%Y-%m-%d',
-        },
-        yaxis: {
-            gridcolor: '#30363d',
-            tickprefix: '$',
-        },
+        xaxis: { gridcolor: '#30363d', tickformat: '%Y-%m-%d' },
+        yaxis: { gridcolor: '#30363d', tickprefix: '$' },
         hovermode: 'x unified',
     };
 
-    const config = {
-        responsive: true,
-        displayModeBar: false,
-    };
-
-    Plotly.newPlot('equityChart', [trace], layout, config);
+    Plotly.newPlot('equityChart', [trace], layout, { responsive: true, displayModeBar: false });
 }
 
 /**
@@ -228,7 +228,7 @@ function populateTradesTable(trades) {
         return;
     }
 
-    elements.tradesBody.innerHTML = trades.map(trade => `
+    elements.tradesBody.innerHTML = trades.slice(0, 50).map(trade => `
         <tr>
             <td>${formatDateTime(trade.entry_time)}</td>
             <td>${formatDateTime(trade.exit_time)}</td>
@@ -239,10 +239,16 @@ function populateTradesTable(trades) {
                 ${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}
             </td>
             <td class="${trade.pnl_pct >= 0 ? 'positive' : 'negative'}">
-                ${trade.pnl_pct >= 0 ? '+' : ''}${trade.pnl_pct.toFixed(2)}%
+                ${trade.pnl_pct >= 0 ? '+' : ''}${trade.pnl_pct.toFixed(1)}%
             </td>
         </tr>
     `).join('');
+
+    if (trades.length > 50) {
+        elements.tradesBody.innerHTML += `
+            <tr><td colspan="7" class="no-data">... and ${trades.length - 50} more trades</td></tr>
+        `;
+    }
 }
 
 /**
@@ -250,24 +256,19 @@ function populateTradesTable(trades) {
  */
 function formatDateTime(isoString) {
     const date = new Date(isoString);
-    return date.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+        ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    elements.fetchDataBtn.addEventListener('click', fetchData);
     elements.runBacktestBtn.addEventListener('click', runBacktest);
-    
-    // Set default dates
+
+    // Set default dates (last 30 days for faster testing)
     const today = new Date();
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(today.getMonth() - 6);
-    
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+
     elements.endDate.value = today.toISOString().split('T')[0];
-    elements.startDate.value = sixMonthsAgo.toISOString().split('T')[0];
+    elements.startDate.value = thirtyDaysAgo.toISOString().split('T')[0];
 });

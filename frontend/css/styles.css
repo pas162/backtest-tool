@@ -199,6 +199,40 @@ body {
     cursor: not-allowed;
 }
 
+.btn-full {
+    width: 100%;
+    margin-top: 25px;
+}
+
+/* ===========================================
+   Progress Bar
+   =========================================== */
+.progress-section {
+    margin-top: 15px;
+}
+
+.progress-bar {
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.progress-text {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
 /* ===========================================
    Status Box
    =========================================== */
