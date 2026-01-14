@@ -1,6 +1,6 @@
 # Multi-Strategy Backtesting Platform - Implementation Plan
 
-Xây dựng nền tảng backtesting chạy hoàn toàn trong Docker, với PostgreSQL để cache dữ liệu và hỗ trợ gap-filling tự động.
+Build a backtesting platform that runs entirely in Docker, with PostgreSQL for data caching and automatic gap-filling support.
 
 ---
 
@@ -14,7 +14,7 @@ services:
     ports: ["8000:8000"]
     depends_on: [postgres, redis]
     environment:
-      - DATABASE_URL=postgresql://backtest:backtest@postgres:5432/backtest_db
+      - DATABASE_URL=postgresql+asyncpg://backtest:backtest@postgres:5432/backtest_db
       - REDIS_URL=redis://redis:6379
     volumes:
       - ./backend:/app/backend
@@ -38,7 +38,7 @@ volumes:
 ```
 
 ### [NEW] Dockerfile
-Python 3.11 với tất cả dependencies
+Python 3.11 with all dependencies
 
 ---
 
@@ -47,7 +47,7 @@ Python 3.11 với tất cả dependencies
 ### [NEW] backend/database/models.py
 
 ```sql
--- symbols: Danh sách coin
+-- symbols: List of coins
 CREATE TABLE symbols (
     id SERIAL PRIMARY KEY,
     name VARCHAR(20) UNIQUE NOT NULL,
@@ -55,7 +55,7 @@ CREATE TABLE symbols (
     is_active BOOLEAN DEFAULT true
 );
 
--- ohlcv_data: Dữ liệu nến
+-- ohlcv_data: Candlestick data
 CREATE TABLE ohlcv_data (
     id BIGSERIAL PRIMARY KEY,
     symbol_id INTEGER REFERENCES symbols(id),
@@ -69,7 +69,7 @@ CREATE TABLE ohlcv_data (
     UNIQUE(symbol_id, timeframe, timestamp)
 );
 
--- data_ranges: Track những khoảng đã fetch
+-- data_ranges: Track fetched ranges
 CREATE TABLE data_ranges (
     id SERIAL PRIMARY KEY,
     symbol_id INTEGER REFERENCES symbols(id),
@@ -80,7 +80,7 @@ CREATE TABLE data_ranges (
     fetched_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- backtest_runs: Lịch sử chạy backtest
+-- backtest_runs: Backtest history
 CREATE TABLE backtest_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     strategy_name VARCHAR(100),
@@ -98,12 +98,12 @@ CREATE TABLE backtest_runs (
 ```
 User requests: 2024-01-01 → 2024-06-30
 
-data_ranges có:
+data_ranges has:
   - 2024-01-01 → 2024-02-28 ✓
   - 2024-04-01 → 2024-06-30 ✓
 
 Gaps detected:
-  - 2024-03-01 → 2024-03-31 ← cần fetch
+  - 2024-03-01 → 2024-03-31 ← needs fetch
 ```
 
 ---
@@ -138,7 +138,7 @@ Abstract base class with standardized interface
 |-----------|---------------|
 | EMA 21/50 | `pandas_ta.ema()` |
 | SuperTrend | `pandas_ta.supertrend()` |
-| VWAP (Daily) | Custom: reset mỗi UTC 00:00 |
+| VWAP (Daily) | Custom: reset at UTC 00:00 |
 | Stoch RSI | `pandas_ta.stochrsi()` |
 
 Signals: `signal_pullback_buy`, `signal_pullback_sell`, `signal_reversal_buy`, `signal_reversal_sell`
@@ -148,12 +148,12 @@ Signals: `signal_pullback_buy`, `signal_pullback_sell`, `signal_reversal_buy`, `
 ## Component 5: Backtesting Engine
 
 ### [NEW] backend/engine/backtester.py
-- Wrapper cho backtesting.py
+- Wrapper for backtesting.py
 - Commission: 0.1% (Binance Futures)
 - Position size: 95% capital
 
 ### [NEW] backend/engine/parallel.py
-- `ProcessPoolExecutor` để chạy nhiều strategies
+- `ProcessPoolExecutor` to run multiple strategies
 
 ---
 
