@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backtest Platform</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🚀 Backtest Platform</h1>
+            <p>Multi-Strategy Backtesting for Crypto Trading</p>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Control Panel -->
+            <section class="control-panel">
+                <h2>Configuration</h2>
+                
+                <div class="form-group">
+                    <label for="symbol">Symbol</label>
+                    <select id="symbol">
+                        <option value="SOLUSDT">SOLUSDT</option>
+                        <option value="BTCUSDT">BTCUSDT</option>
+                        <option value="ETHUSDT">ETHUSDT</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="timeframe">Timeframe</label>
+                    <select id="timeframe">
+                        <option value="1m">1 Minute</option>
+                        <option value="5m">5 Minutes</option>
+                        <option value="15m">15 Minutes</option>
+                        <option value="1h" selected>1 Hour</option>
+                        <option value="4h">4 Hours</option>
+                        <option value="1d">1 Day</option>
+                    </select>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="startDate">Start Date</label>
+                        <input type="date" id="startDate" value="2024-01-01">
+                    </div>
+                    <div class="form-group">
+                        <label for="endDate">End Date</label>
+                        <input type="date" id="endDate" value="2024-06-30">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="strategy">Strategy</label>
+                    <select id="strategy">
+                        <option value="vwap_supertrend_ema">VWAP + SuperTrend + EMA</option>
+                    </select>
+                </div>
+
+                <!-- Strategy Parameters -->
+                <div id="strategyParams" class="params-section">
+                    <h3>Strategy Parameters</h3>
+                    <div class="params-grid">
+                        <div class="form-group">
+                            <label for="ema1_length">EMA 1 Length</label>
+                            <input type="number" id="ema1_length" value="21" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="ema2_length">EMA 2 Length</label>
+                            <input type="number" id="ema2_length" value="50" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="st_length">SuperTrend Length</label>
+                            <input type="number" id="st_length" value="12" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="st_multiplier">SuperTrend Multiplier</label>
+                            <input type="number" id="st_multiplier" value="3.0" min="0.1" step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button id="fetchDataBtn" class="btn btn-secondary">
+                        📥 Fetch Data
+                    </button>
+                    <button id="runBacktestBtn" class="btn btn-primary">
+                        ▶️ Run Backtest
+                    </button>
+                </div>
+
+                <div id="status" class="status-box"></div>
+            </section>
+
+            <!-- Results Panel -->
+            <section class="results-panel">
+                <h2>Results</h2>
+
+                <!-- Metrics Cards -->
+                <div id="metricsGrid" class="metrics-grid">
+                    <div class="metric-card">
+                        <span class="metric-label">Return</span>
+                        <span class="metric-value" id="returnPct">-</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Win Rate</span>
+                        <span class="metric-value" id="winRate">-</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Max Drawdown</span>
+                        <span class="metric-value" id="maxDrawdown">-</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Total Trades</span>
+                        <span class="metric-value" id="totalTrades">-</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Sharpe Ratio</span>
+                        <span class="metric-value" id="sharpeRatio">-</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Profit Factor</span>
+                        <span class="metric-value" id="profitFactor">-</span>
+                    </div>
+                </div>
+
+                <!-- Equity Curve Chart -->
+                <div class="chart-container">
+                    <h3>Equity Curve</h3>
+                    <div id="equityChart"></div>
+                </div>
+
+                <!-- Trades Table -->
+                <div class="trades-section">
+                    <h3>Trade History</h3>
+                    <div class="table-wrapper">
+                        <table id="tradesTable">
+                            <thead>
+                                <tr>
+                                    <th>Entry Time</th>
+                                    <th>Exit Time</th>
+                                    <th>Side</th>
+                                    <th>Entry Price</th>
+                                    <th>Exit Price</th>
+                                    <th>PnL</th>
+                                    <th>PnL %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tradesBody">
+                                <tr>
+                                    <td colspan="7" class="no-data">Run a backtest to see trades</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Backtest Platform v1.0 | Data from Binance Futures</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

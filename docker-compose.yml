@@ -1,0 +1,53 @@
+services:
+  # Main application
+  app:
+    build: .
+    container_name: backtest-app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://backtest:backtest@postgres:5432/backtest_db
+      - REDIS_URL=redis://redis:6379
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+    command: uvicorn backend.api.server:app --host 0.0.0.0 --port 8000 --reload
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: backtest-postgres
+    environment:
+      POSTGRES_DB: backtest_db
+      POSTGRES_USER: backtest
+      POSTGRES_PASSWORD: backtest
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backtest -d backtest_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and future message queue
+  redis:
+    image: redis:7-alpine
+    container_name: backtest-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
