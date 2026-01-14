@@ -233,6 +233,13 @@ body {
     text-align: center;
 }
 
+.hint-text {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    font-style: italic;
+}
+
 /* ===========================================
    Status Box
    =========================================== */

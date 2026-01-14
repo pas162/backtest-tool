@@ -43,16 +43,18 @@ class BacktestRequest(BaseModel):
         "st_length": 12,
         "st_multiplier": 3.0
     })
+    initial_capital: Optional[float] = Field(default=10000.0, example=10000.0)
+    commission: Optional[float] = Field(default=0.001, example=0.001, description="Total fee per trade (decimal, e.g. 0.001 = 0.1%)")
 
 
 class BacktestMetrics(BaseModel):
     """Backtest performance metrics."""
-    return_pct: float
-    buy_hold_return_pct: float
-    max_drawdown_pct: float
-    win_rate_pct: float
-    total_trades: int
-    avg_trade_pct: float
+    return_pct: Optional[float] = 0.0
+    buy_hold_return_pct: Optional[float] = 0.0
+    max_drawdown_pct: Optional[float] = 0.0
+    win_rate_pct: Optional[float] = 0.0
+    total_trades: int = 0
+    avg_trade_pct: Optional[float] = 0.0
     sharpe_ratio: Optional[float] = None
     profit_factor: Optional[float] = None
 

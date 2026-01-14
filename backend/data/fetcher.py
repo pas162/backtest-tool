@@ -179,25 +179,37 @@ class DataService:
         timeframe: str,
         candles: list[dict]
     ):
-        """Save candles to database with upsert."""
+        """Save candles to database with upsert in batches."""
         if not candles:
             return
         
-        # Prepare insert statement with ON CONFLICT DO NOTHING
-        stmt = insert(OHLCVData).values([
-            {
-                'symbol_id': symbol_id,
-                'timeframe': timeframe,
-                **candle
-            }
-            for candle in candles
-        ]).on_conflict_do_nothing(
-            index_elements=['symbol_id', 'timeframe', 'timestamp']
-        )
+        # Batch size: 500 candles per insert (500 * 8 params = 4000, well under 32767 limit)
+        BATCH_SIZE = 500
+        total_saved = 0
         
-        await self.db.execute(stmt)
-        await self.db.commit()
-        logger.info(f"Saved {len(candles)} candles")
+        for i in range(0, len(candles), BATCH_SIZE):
+            batch = candles[i:i + BATCH_SIZE]
+            
+            # Prepare insert statement with ON CONFLICT DO NOTHING
+            stmt = insert(OHLCVData).values([
+                {
+                    'symbol_id': symbol_id,
+                    'timeframe': timeframe,
+                    **candle
+                }
+                for candle in batch
+            ]).on_conflict_do_nothing(
+                index_elements=['symbol_id', 'timeframe', 'timestamp']
+            )
+            
+            await self.db.execute(stmt)
+            await self.db.commit()
+            total_saved += len(batch)
+            
+            if len(candles) > BATCH_SIZE:
+                logger.info(f"Saved batch {i//BATCH_SIZE + 1}: {len(batch)} candles ({total_saved}/{len(candles)})")
+        
+        logger.info(f"Saved {total_saved} candles total")
     
     async def update_data_range(
         self,

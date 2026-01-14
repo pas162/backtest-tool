@@ -26,6 +26,9 @@ const elements = {
     // Chart & Table
     equityChart: document.getElementById('equityChart'),
     tradesBody: document.getElementById('tradesBody'),
+    // Backtest Settings
+    initialCapital: document.getElementById('initialCapital'),
+    commission: document.getElementById('commission'),
 };
 
 // Strategy parameters
@@ -112,6 +115,8 @@ async function runBacktest() {
                 end_date: elements.endDate.value,
                 strategy: elements.strategy.value,
                 params: getStrategyParams(),
+                initial_capital: parseFloat(elements.initialCapital.value),
+                commission: parseFloat(elements.commission.value) / 100,  // Convert % to decimal
             }),
         });
 
@@ -264,11 +269,11 @@ function formatDateTime(isoString) {
 document.addEventListener('DOMContentLoaded', () => {
     elements.runBacktestBtn.addEventListener('click', runBacktest);
 
-    // Set default dates (last 30 days for faster testing)
+    // Set default dates (last 7 days for faster testing)
     const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(today.getDate() - 7);
 
     elements.endDate.value = today.toISOString().split('T')[0];
-    elements.startDate.value = thirtyDaysAgo.toISOString().split('T')[0];
+    elements.startDate.value = oneWeekAgo.toISOString().split('T')[0];
 });

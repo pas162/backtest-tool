@@ -3,6 +3,7 @@ Backtest API routes.
 Endpoints for running and retrieving backtests.
 """
 
+import traceback
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,90 +29,143 @@ async def run_backtest(
     db: AsyncSession = Depends(get_db)
 ):
     """Run a backtest with specified parameters."""
+    logger.info(f"=== BACKTEST START ===")
+    logger.info(f"Request: {request.symbol} {request.timeframe} {request.start_date} to {request.end_date}")
+    logger.info(f"Strategy: {request.strategy}, Params: {request.params}")
+    
     try:
-        start_dt = datetime.strptime(request.start_date, "%Y-%m-%d")
-        end_dt = datetime.strptime(request.end_date, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(400, "Invalid date format. Use YYYY-MM-DD")
-    
-    # Get strategy class
-    strategy_class = get_strategy_class(request.strategy)
-    if not strategy_class:
-        raise HTTPException(400, f"Unknown strategy: {request.strategy}")
-    
-    # Get data
-    data_service = DataService(db)
-    try:
-        df = await data_service.get_data(
-            request.symbol,
-            request.timeframe,
-            start_dt,
-            end_dt
+        # Parse dates
+        try:
+            start_dt = datetime.strptime(request.start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(request.end_date, "%Y-%m-%d")
+            logger.info(f"Dates parsed: {start_dt} to {end_dt}")
+        except ValueError as e:
+            logger.error(f"Date parsing error: {e}")
+            raise HTTPException(400, "Invalid date format. Use YYYY-MM-DD")
+        
+        # Get strategy class
+        strategy_class = get_strategy_class(request.strategy)
+        if not strategy_class:
+            logger.error(f"Unknown strategy: {request.strategy}")
+            raise HTTPException(400, f"Unknown strategy: {request.strategy}")
+        logger.info(f"Strategy class loaded: {strategy_class.__name__}")
+        
+        # Get data
+        logger.info("Fetching data...")
+        data_service = DataService(db)
+        try:
+            df = await data_service.get_data(
+                request.symbol,
+                request.timeframe,
+                start_dt,
+                end_dt
+            )
+            logger.info(f"Data fetched: {len(df)} rows")
+        except Exception as e:
+            logger.error(f"Data fetch error: {e}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(500, f"Failed to fetch data: {str(e)}")
+        finally:
+            await data_service.close()
+        
+        if df.empty:
+            logger.warning("No data available")
+            raise HTTPException(400, "No data available for the specified range")
+        
+        # Run backtest
+        logger.info("Running backtest...")
+        try:
+            engine = BacktestEngine(
+                cash=request.initial_capital,
+                commission=request.commission
+            )
+            result = engine.run(
+                strategy_class=strategy_class,
+                data=df,
+                **request.params
+            )
+            logger.info(f"Backtest complete: {result['metrics']}")
+        except Exception as e:
+            logger.error(f"Backtest engine error: {e}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(500, f"Backtest failed: {str(e)}")
+        
+        # Get symbol for DB
+        logger.info("Saving to database...")
+        try:
+            sym_result = await db.execute(
+                select(Symbol).where(Symbol.name == request.symbol)
+            )
+            sym = sym_result.scalar_one()
+            
+            # Save to database
+            backtest_run = BacktestRun(
+                strategy_name=request.strategy,
+                symbol_id=sym.id,
+                timeframe=request.timeframe,
+                start_time=start_dt,
+                end_time=end_dt,
+                params=request.params,
+                metrics=result['metrics'],
+                equity_curve=result['equity_curve']
+            )
+            db.add(backtest_run)
+            await db.commit()
+            await db.refresh(backtest_run)
+            logger.info(f"Backtest run saved: {backtest_run.id}")
+            
+            # Save trades
+            for trade in result['trades']:
+                # Parse timestamps - they may be ISO strings or datetime objects
+                entry_time = trade['entry_time']
+                exit_time = trade['exit_time']
+                
+                if isinstance(entry_time, str):
+                    entry_time = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+                if isinstance(exit_time, str):
+                    exit_time = datetime.fromisoformat(exit_time.replace('Z', '+00:00'))
+                
+                bt_trade = BacktestTrade(
+                    backtest_run_id=backtest_run.id,
+                    entry_time=entry_time,
+                    exit_time=exit_time,
+                    side=trade['side'],
+                    entry_price=trade['entry_price'],
+                    exit_price=trade['exit_price'],
+                    size=trade['size'],
+                    pnl=trade['pnl'],
+                    pnl_pct=trade['pnl_pct'],
+                    signal_type=trade.get('signal_type')
+                )
+                db.add(bt_trade)
+            await db.commit()
+            logger.info(f"Saved {len(result['trades'])} trades")
+        except Exception as e:
+            logger.error(f"Database save error: {e}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(500, f"Failed to save results: {str(e)}")
+        
+        logger.info("=== BACKTEST SUCCESS ===")
+        return BacktestResponse(
+            id=backtest_run.id,
+            symbol=request.symbol,
+            timeframe=request.timeframe,
+            strategy=request.strategy,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            params=request.params,
+            metrics=BacktestMetrics(**result['metrics']),
+            equity_curve=result['equity_curve'],
+            trades=[TradeRecord(**t) for t in result['trades']]
         )
-    finally:
-        await data_service.close()
-    
-    if df.empty:
-        raise HTTPException(400, "No data available for the specified range")
-    
-    # Run backtest
-    engine = BacktestEngine()
-    result = engine.run(
-        strategy_class=strategy_class,
-        data=df,
-        **request.params
-    )
-    
-    # Get symbol for DB
-    sym_result = await db.execute(
-        select(Symbol).where(Symbol.name == request.symbol)
-    )
-    sym = sym_result.scalar_one()
-    
-    # Save to database
-    backtest_run = BacktestRun(
-        strategy_name=request.strategy,
-        symbol_id=sym.id,
-        timeframe=request.timeframe,
-        start_time=start_dt,
-        end_time=end_dt,
-        params=request.params,
-        metrics=result['metrics'],
-        equity_curve=result['equity_curve']
-    )
-    db.add(backtest_run)
-    await db.commit()
-    await db.refresh(backtest_run)
-    
-    # Save trades
-    for trade in result['trades']:
-        bt_trade = BacktestTrade(
-            backtest_run_id=backtest_run.id,
-            entry_time=trade['entry_time'],
-            exit_time=trade['exit_time'],
-            side=trade['side'],
-            entry_price=trade['entry_price'],
-            exit_price=trade['exit_price'],
-            size=trade['size'],
-            pnl=trade['pnl'],
-            pnl_pct=trade['pnl_pct'],
-            signal_type=trade.get('signal_type')
-        )
-        db.add(bt_trade)
-    await db.commit()
-    
-    return BacktestResponse(
-        id=backtest_run.id,
-        symbol=request.symbol,
-        timeframe=request.timeframe,
-        strategy=request.strategy,
-        start_date=request.start_date,
-        end_date=request.end_date,
-        params=request.params,
-        metrics=BacktestMetrics(**result['metrics']),
-        equity_curve=result['equity_curve'],
-        trades=[TradeRecord(**t) for t in result['trades']]
-    )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"=== UNEXPECTED ERROR ===")
+        logger.error(f"Error: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(500, f"Unexpected error: {str(e)}")
 
 
 @router.get("/{backtest_id}", response_model=BacktestResponse)
