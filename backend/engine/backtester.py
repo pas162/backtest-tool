@@ -35,10 +35,14 @@ class BacktestEngine:
     def __init__(
         self,
         cash: float = None,
-        commission: float = None
+        commission: float = None,
+        leverage: float = None,
+        position_size: float = None
     ):
         self.cash = cash or settings.default_cash
         self.commission = commission or settings.default_commission
+        self.leverage = leverage or 20.0
+        self.position_size = position_size or 10.0  # USD per trade
     
     def run(
         self,
@@ -57,12 +61,20 @@ class BacktestEngine:
         Returns:
             Dict with metrics, equity_curve, and trades
         """
+        # Calculate margin from leverage (margin = 1/leverage)
+        # e.g., 20x leverage = 5% margin requirement
+        margin = 1.0 / self.leverage
+        
+        # For position sizing, we use effective capital with leverage
+        effective_capital = self.cash * self.leverage
+        
         # Create backtest instance
         bt = Backtest(
             data,
             strategy_class,
-            cash=self.cash,
+            cash=effective_capital,  # Use leveraged capital
             commission=self.commission,
+            margin=margin,  # Set margin requirement
             exclusive_orders=True
         )
         
@@ -105,7 +117,7 @@ class BacktestEngine:
         return sanitize_dict_for_json(metrics)
     
     def _extract_equity_curve(self, stats) -> list[dict]:
-        """Extract equity curve data."""
+        """Extract equity curve data, scaled back to original capital."""
         equity = stats.get("_equity_curve")
         if equity is None:
             return []
@@ -113,15 +125,17 @@ class BacktestEngine:
         result = []
         for timestamp, row in equity.iterrows():
             equity_val = row.get("Equity", 0)
+            # Scale back to original capital (divide by leverage)
+            scaled_equity = float(equity_val) / self.leverage
             result.append({
                 "timestamp": timestamp.isoformat() if hasattr(timestamp, 'isoformat') else str(timestamp),
-                "equity": sanitize_for_json(float(equity_val))
+                "equity": sanitize_for_json(scaled_equity)
             })
         
         return result
     
     def _extract_trades(self, stats) -> list[dict]:
-        """Extract trade records."""
+        """Extract trade records, scaled back to original capital."""
         trades_df = stats.get("_trades")
         if trades_df is None or trades_df.empty:
             return []
@@ -131,6 +145,9 @@ class BacktestEngine:
             entry_time = trade.get("EntryTime")
             exit_time = trade.get("ExitTime")
             
+            # Scale PnL back to original capital (divide by leverage)
+            pnl = float(trade.get("PnL", 0)) / self.leverage
+            
             result.append({
                 "entry_time": entry_time.isoformat() if hasattr(entry_time, 'isoformat') else str(entry_time),
                 "exit_time": exit_time.isoformat() if hasattr(exit_time, 'isoformat') else str(exit_time),
@@ -138,7 +155,7 @@ class BacktestEngine:
                 "entry_price": sanitize_for_json(float(trade.get("EntryPrice", 0))),
                 "exit_price": sanitize_for_json(float(trade.get("ExitPrice", 0))),
                 "size": abs(float(trade.get("Size", 0))),
-                "pnl": sanitize_for_json(float(trade.get("PnL", 0))),
+                "pnl": sanitize_for_json(pnl),
                 "pnl_pct": sanitize_for_json(float(trade.get("ReturnPct", 0)) * 100),
                 "signal_type": trade.get("Tag")
             })

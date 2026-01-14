@@ -5,11 +5,13 @@ Registry of all available trading strategies.
 
 from backend.strategies.base import BaseStrategy
 from backend.strategies.vwap_supertrend_ema import VWAPSuperTrendEMA
+from backend.strategies.vwap_supertrend_ema_v2 import VWAPSuperTrendEMAv2
 
 
 # Strategy registry
 STRATEGIES = {
     "vwap_supertrend_ema": VWAPSuperTrendEMA,
+    "vwap_supertrend_ema_v2": VWAPSuperTrendEMAv2,
 }
 
 
@@ -34,6 +36,7 @@ def get_all_strategies() -> list[dict]:
 __all__ = [
     "BaseStrategy",
     "VWAPSuperTrendEMA",
+    "VWAPSuperTrendEMAv2",
     "get_strategy_class",
     "get_all_strategies",
 ]

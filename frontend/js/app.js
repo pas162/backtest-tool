@@ -28,6 +28,8 @@ const elements = {
     tradesBody: document.getElementById('tradesBody'),
     // Backtest Settings
     initialCapital: document.getElementById('initialCapital'),
+    leverage: document.getElementById('leverage'),
+    positionSize: document.getElementById('positionSize'),
     commission: document.getElementById('commission'),
 };
 
@@ -116,6 +118,8 @@ async function runBacktest() {
                 strategy: elements.strategy.value,
                 params: getStrategyParams(),
                 initial_capital: parseFloat(elements.initialCapital.value),
+                leverage: parseFloat(elements.leverage.value),
+                position_size: parseFloat(elements.positionSize.value),
                 commission: parseFloat(elements.commission.value) / 100,  // Convert % to decimal
             }),
         });

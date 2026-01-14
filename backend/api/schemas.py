@@ -43,8 +43,10 @@ class BacktestRequest(BaseModel):
         "st_length": 12,
         "st_multiplier": 3.0
     })
-    initial_capital: Optional[float] = Field(default=10000.0, example=10000.0)
-    commission: Optional[float] = Field(default=0.001, example=0.001, description="Total fee per trade (decimal, e.g. 0.001 = 0.1%)")
+    initial_capital: Optional[float] = Field(default=100.0, example=100.0)
+    leverage: Optional[float] = Field(default=20.0, example=20.0, description="Leverage multiplier")
+    position_size: Optional[float] = Field(default=10.0, example=10.0, description="Position size per trade in USD")
+    commission: Optional[float] = Field(default=0.001, example=0.001, description="Total fee per trade (decimal)")
 
 
 class BacktestMetrics(BaseModel):

@@ -77,7 +77,9 @@ async def run_backtest(
         try:
             engine = BacktestEngine(
                 cash=request.initial_capital,
-                commission=request.commission
+                commission=request.commission,
+                leverage=request.leverage,
+                position_size=request.position_size
             )
             result = engine.run(
                 strategy_class=strategy_class,
