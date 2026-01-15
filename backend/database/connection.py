@@ -9,10 +9,10 @@ from sqlalchemy.orm import DeclarativeBase
 from backend.config import settings
 
 
-# Create async engine
+# Create async engine (echo=False to reduce log noise)
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.debug,
+    echo=False,  # Disabled for cleaner logs
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10

@@ -86,9 +86,10 @@ async def run_backtest(
             # position_size / initial_capital = fraction of capital per trade
             position_size_pct = (request.position_size / request.initial_capital) * 100
             
-            # Add position sizing to strategy params (for strategies that support it)
+            # Add position sizing to strategy params (only for V2)
             strategy_params = dict(request.params)
-            strategy_params['position_size_pct'] = position_size_pct
+            if request.strategy == 'vwap_supertrend_ema_v2':
+                strategy_params['position_size_pct'] = position_size_pct
             
             result = engine.run(
                 strategy_class=strategy_class,
@@ -96,6 +97,43 @@ async def run_backtest(
                 **strategy_params
             )
             logger.info(f"Backtest complete: {result['metrics']}")
+            
+            # === TRADE ANALYSIS LOG ===
+            trades = result['trades']
+            if trades:
+                winning_trades = [t for t in trades if t['pnl'] > 0]
+                losing_trades = [t for t in trades if t['pnl'] < 0]
+                long_trades = [t for t in trades if t['side'] == 'long']
+                short_trades = [t for t in trades if t['side'] == 'short']
+                
+                avg_win = sum(t['pnl'] for t in winning_trades) / len(winning_trades) if winning_trades else 0
+                avg_loss = sum(t['pnl'] for t in losing_trades) / len(losing_trades) if losing_trades else 0
+                
+                long_pnl = sum(t['pnl'] for t in long_trades)
+                short_pnl = sum(t['pnl'] for t in short_trades)
+                long_wins = len([t for t in long_trades if t['pnl'] > 0])
+                short_wins = len([t for t in short_trades if t['pnl'] > 0])
+                
+                logger.info("=" * 50)
+                logger.info("📊 TRADE ANALYSIS")
+                logger.info("=" * 50)
+                logger.info(f"Total Trades: {len(trades)} | Wins: {len(winning_trades)} | Losses: {len(losing_trades)}")
+                logger.info(f"Avg Win: ${avg_win:.2f} | Avg Loss: ${avg_loss:.2f}")
+                logger.info(f"LONG trades: {len(long_trades)} (wins: {long_wins}) | PnL: ${long_pnl:.2f}")
+                logger.info(f"SHORT trades: {len(short_trades)} (wins: {short_wins}) | PnL: ${short_pnl:.2f}")
+                
+                # Show worst 3 trades
+                sorted_by_pnl = sorted(trades, key=lambda x: x['pnl'])
+                logger.info("--- WORST 3 TRADES ---")
+                for t in sorted_by_pnl[:3]:
+                    logger.info(f"  {t['side'].upper()} | Entry: ${t['entry_price']:.2f} -> Exit: ${t['exit_price']:.2f} | PnL: ${t['pnl']:.2f}")
+                
+                # Show best 3 trades
+                logger.info("--- BEST 3 TRADES ---")
+                for t in sorted_by_pnl[-3:]:
+                    logger.info(f"  {t['side'].upper()} | Entry: ${t['entry_price']:.2f} -> Exit: ${t['exit_price']:.2f} | PnL: ${t['pnl']:.2f}")
+                logger.info("=" * 50)
+                
         except Exception as e:
             logger.error(f"Backtest engine error: {e}")
             logger.error(traceback.format_exc())

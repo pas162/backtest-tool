@@ -1,0 +1,91 @@
+{
+  "timestamp": "2026-01-15T17:22:23.223098",
+  "params": {
+    "ema1_length": 21,
+    "ema2_length": 50,
+    "st_length": 12,
+    "st_multiplier": 3.0,
+    "stop_loss_pct": 20,
+    "take_profit_pct": 0
+  },
+  "metrics": {
+    "return_pct": -38.032316404999996,
+    "buy_hold_return_pct": 14.241419865283863,
+    "max_drawdown_pct": -39.317099590314044,
+    "win_rate_pct": 32.758620689655174,
+    "total_trades": 116,
+    "avg_trade_pct": -0.204110948180658,
+    "sharpe_ratio": null,
+    "profit_factor": 0.4925446834877504
+  },
+  "analysis": {
+    "total": {
+      "name": "ALL",
+      "count": 116,
+      "wins": 38,
+      "losses": 78,
+      "win_rate": 32.758620689655174,
+      "total_pnl": -38.032316405,
+      "avg_win": 0.9648618519736855,
+      "avg_loss": -0.957654702307693,
+      "profit_factor": 0.4908459187960636
+    },
+    "long": {
+      "name": "LONG",
+      "count": 67,
+      "wins": 24,
+      "losses": 43,
+      "win_rate": 35.82089552238806,
+      "total_pnl": -17.6766776350001,
+      "avg_win": 0.9681627237499985,
+      "avg_loss": -0.9514554187209318,
+      "profit_factor": 0.5679403172163494
+    },
+    "short": {
+      "name": "SHORT",
+      "count": 49,
+      "wins": 14,
+      "losses": 35,
+      "win_rate": 28.57142857142857,
+      "total_pnl": -20.355638769999906,
+      "avg_win": 0.9592032146428632,
+      "avg_loss": -0.9652709649999998,
+      "profit_factor": 0.39748557635020687
+    }
+  },
+  "problems": [
+    {
+      "type": "OVERALL_LOSS",
+      "severity": "HIGH",
+      "description": "Strategy is losing money: $-38.03"
+    },
+    {
+      "type": "LOW_WIN_RATE",
+      "severity": "HIGH",
+      "description": "Win rate is only 32.8% (should be >40%)"
+    },
+    {
+      "type": "BOTH_LOSING_LONG_BETTER",
+      "severity": "HIGH",
+      "description": "Both losing. LONG win rate (35.8%) > SHORT (28.6%)",
+      "suggestion": "Focus on LONG only, or tighten SHORT entry conditions"
+    }
+  ],
+  "suggestions": [
+    {
+      "action": "INCREASE_ADX_THRESHOLD",
+      "reason": "Low win rate - only trade in stronger trends",
+      "change": "Increase adx_threshold from current value to +5"
+    },
+    {
+      "action": "TIGHTER_STOCHRSI",
+      "reason": "Low win rate - wait for more extreme conditions",
+      "change": "Change stoch_oversold from 30 to 20, stoch_overbought from 70 to 80"
+    },
+    {
+      "action": "SINGLE_DIRECTION",
+      "reason": "Focus on LONG only, or tighten SHORT entry conditions",
+      "change": "Modify strategy to trade only in the better direction"
+    }
+  ]
+}

@@ -60,9 +60,13 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
     stoch_length = 14
     lookback = 4
     adx_length = 14
-    adx_threshold = 20  # Only trade when ADX > this
-    stoch_oversold = 30  # More relaxed than V1's 20
-    stoch_overbought = 70  # More relaxed than V1's 80
+    adx_threshold = 30  # INCREASED from 25 (optimizer round 2)
+    stoch_oversold = 20  # TIGHTER from 30 (optimizer suggestion)
+    stoch_overbought = 80  # TIGHTER from 70 (optimizer suggestion)
+    
+    # Trade direction control (optimizer: LONG performs better)
+    long_only = True  # Only take LONG trades when EMA bullish
+    short_only = False  # Disabled - SHORT was underperforming
     
     # Risk Management - SL/TP as percentages
     stop_loss_pct = 20  # Default 20% stop loss
@@ -237,8 +241,13 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
         # Position size as fraction of equity
         size = self.position_size_pct / 100  # e.g., 10% -> 0.10
         
-        # Pullback Buy
+        # Check EMA trend direction
+        is_ema_bullish = self.ema1[-1] > self.ema2[-1]
+        is_ema_bearish = self.ema1[-1] < self.ema2[-1]
+        
+        # Pullback Buy (only when EMA bullish OR long_only disabled)
         if (
+            (not self.long_only or is_ema_bullish) and  # LONG only in uptrend
             self._is_uptrend_zone() and
             self._is_touching_support() and
             self._is_bullish_candle() and
@@ -246,8 +255,10 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
         ):
             self.buy(size=size)
         
-        # Pullback Sell
+        # Pullback Sell (disabled when long_only=True)
         elif (
+            not self.long_only and  # Skip SHORT when long_only mode
+            (not self.short_only or is_ema_bearish) and
             self._is_downtrend_zone() and
             self._is_touching_resistance() and
             self._is_bearish_candle() and
@@ -257,16 +268,18 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
         
         # === REVERSAL SIGNALS ===
         
-        # Reversal Buy
+        # Reversal Buy (only when long_only=False OR EMA bullish)
         elif (
+            (not self.long_only or is_ema_bullish) and
             self._supertrend_flipped_bullish() and
             price > self.ema1[-1] and
             price > self.vwap[-1]
         ):
             self.buy(size=size)
         
-        # Reversal Sell
+        # Reversal Sell (disabled when long_only=True)
         elif (
+            not self.long_only and
             self._supertrend_flipped_bearish() and
             price < self.ema1[-1] and
             price < self.vwap[-1]
