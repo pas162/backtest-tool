@@ -103,18 +103,33 @@ class BacktestEngine:
     
     def _extract_metrics(self, stats) -> dict:
         """Extract performance metrics from backtest stats."""
-        # Get Sharpe with validation (should be between -10 and 10 realistically)
-        sharpe = stats.get("Sharpe Ratio")
-        if sharpe is not None:
-            sharpe = float(sharpe)
-            if abs(sharpe) > 100:  # Clearly invalid
+        # Get Sharpe with validation
+        raw_sharpe = stats.get("Sharpe Ratio")
+        sharpe = None
+        if raw_sharpe is not None:
+            try:
+                sharpe = float(raw_sharpe)
+                # Check for NaN/Inf
+                if math.isnan(sharpe) or math.isinf(sharpe):
+                    logger.warning(f"Sharpe Ratio is NaN/Inf: {raw_sharpe}")
+                    sharpe = None
+                elif abs(sharpe) > 100:  # Unrealistic value
+                    logger.warning(f"Sharpe Ratio too extreme: {sharpe}, setting to None")
+                    sharpe = None
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Could not convert Sharpe Ratio: {raw_sharpe}, error: {e}")
                 sharpe = None
         
         # Get Profit Factor with validation
         profit_factor = stats.get("Profit Factor")
         if profit_factor is not None:
-            profit_factor = float(profit_factor)
-            if profit_factor > 1000 or profit_factor < 0:  # Invalid
+            try:
+                profit_factor = float(profit_factor)
+                if math.isnan(profit_factor) or math.isinf(profit_factor):
+                    profit_factor = None
+                elif profit_factor > 1000 or profit_factor < 0:
+                    profit_factor = None
+            except (TypeError, ValueError):
                 profit_factor = None
         
         metrics = {

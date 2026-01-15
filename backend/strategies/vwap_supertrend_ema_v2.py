@@ -68,6 +68,9 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
     stop_loss_pct = 20  # Default 20% stop loss
     take_profit_pct = 40  # Default 40% take profit (RR 1:2)
     
+    # Position sizing - percentage of capital per trade (default 10%)
+    position_size_pct = 10
+    
     def init(self):
         """Calculate all indicators."""
         close = pd.Series(self.data.Close)
@@ -231,6 +234,9 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
         
         # === PULLBACK SIGNALS ===
         
+        # Position size as fraction of equity
+        size = self.position_size_pct / 100  # e.g., 10% -> 0.10
+        
         # Pullback Buy
         if (
             self._is_uptrend_zone() and
@@ -238,7 +244,7 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
             self._is_bullish_candle() and
             k_value < self.stoch_oversold
         ):
-            self.buy()
+            self.buy(size=size)
         
         # Pullback Sell
         elif (
@@ -247,7 +253,7 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
             self._is_bearish_candle() and
             k_value > self.stoch_overbought
         ):
-            self.sell()
+            self.sell(size=size)
         
         # === REVERSAL SIGNALS ===
         
@@ -257,7 +263,7 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
             price > self.ema1[-1] and
             price > self.vwap[-1]
         ):
-            self.buy()
+            self.buy(size=size)
         
         # Reversal Sell
         elif (
@@ -265,7 +271,7 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
             price < self.ema1[-1] and
             price < self.vwap[-1]
         ):
-            self.sell()
+            self.sell(size=size)
     
     @classmethod
     def get_parameters(cls) -> list[dict]:

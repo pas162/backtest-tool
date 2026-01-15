@@ -81,10 +81,19 @@ async def run_backtest(
                 leverage=request.leverage,
                 position_size=request.position_size
             )
+            
+            # Calculate position size as percentage of capital
+            # position_size / initial_capital = fraction of capital per trade
+            position_size_pct = (request.position_size / request.initial_capital) * 100
+            
+            # Add position sizing to strategy params (for strategies that support it)
+            strategy_params = dict(request.params)
+            strategy_params['position_size_pct'] = position_size_pct
+            
             result = engine.run(
                 strategy_class=strategy_class,
                 data=df,
-                **request.params
+                **strategy_params
             )
             logger.info(f"Backtest complete: {result['metrics']}")
         except Exception as e:
