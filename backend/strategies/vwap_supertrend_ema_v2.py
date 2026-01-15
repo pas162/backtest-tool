@@ -64,6 +64,10 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
     stoch_oversold = 30  # More relaxed than V1's 20
     stoch_overbought = 70  # More relaxed than V1's 80
     
+    # Risk Management - SL/TP as percentages
+    stop_loss_pct = 20  # Default 20% stop loss
+    take_profit_pct = 40  # Default 40% take profit (RR 1:2)
+    
     def init(self):
         """Calculate all indicators."""
         close = pd.Series(self.data.Close)
@@ -198,15 +202,41 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
         if not self._is_trending_market():
             return  # Don't trade in ranging market
         
+        # === MANUAL SL/TP CHECK (if position exists) ===
+        if self.position:
+            # Use profit/loss percentage for SL/TP check
+            pl_pct = self.position.pl_pct * 100  # Convert to percentage
+            sl_pct = self.stop_loss_pct  # e.g., 20
+            tp_pct = self.take_profit_pct  # e.g., 40
+            
+            # Check SL (negative P/L exceeds SL threshold)
+            if pl_pct <= -sl_pct:
+                self.position.close()
+                return
+            
+            # Check TP if set (positive P/L exceeds TP threshold)
+            if tp_pct > 0 and pl_pct >= tp_pct:
+                self.position.close()
+                return
+            
+            # SuperTrend exit
+            if self.position.is_long and self.st_dir[-1] > 0:
+                self.position.close()
+                return
+            elif self.position.is_short and self.st_dir[-1] < 0:
+                self.position.close()
+                return
+                
+            return  # Don't open new position while holding
+        
         # === PULLBACK SIGNALS ===
         
-        # Pullback Buy (relaxed conditions)
+        # Pullback Buy
         if (
             self._is_uptrend_zone() and
             self._is_touching_support() and
             self._is_bullish_candle() and
-            k_value < self.stoch_oversold and
-            not self.position
+            k_value < self.stoch_oversold
         ):
             self.buy()
         
@@ -215,8 +245,7 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
             self._is_downtrend_zone() and
             self._is_touching_resistance() and
             self._is_bearish_candle() and
-            k_value > self.stoch_overbought and
-            not self.position
+            k_value > self.stoch_overbought
         ):
             self.sell()
         
@@ -226,8 +255,7 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
         elif (
             self._supertrend_flipped_bullish() and
             price > self.ema1[-1] and
-            price > self.vwap[-1] and
-            not self.position
+            price > self.vwap[-1]
         ):
             self.buy()
         
@@ -235,17 +263,9 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
         elif (
             self._supertrend_flipped_bearish() and
             price < self.ema1[-1] and
-            price < self.vwap[-1] and
-            not self.position
+            price < self.vwap[-1]
         ):
             self.sell()
-        
-        # === EXIT LOGIC (same as V1) ===
-        elif self.position.is_long and self.st_dir[-1] > 0:
-            self.position.close()
-        
-        elif self.position.is_short and self.st_dir[-1] < 0:
-            self.position.close()
     
     @classmethod
     def get_parameters(cls) -> list[dict]:
@@ -258,4 +278,6 @@ class VWAPSuperTrendEMAv2(BaseStrategy):
             {"name": "adx_threshold", "type": "int", "default": 20, "min": 15, "max": 30},
             {"name": "stoch_oversold", "type": "int", "default": 30, "min": 15, "max": 40},
             {"name": "stoch_overbought", "type": "int", "default": 70, "min": 60, "max": 85},
+            {"name": "stop_loss_pct", "type": "float", "default": 20, "min": 1, "max": 50},
+            {"name": "take_profit_pct", "type": "float", "default": 0, "min": 0, "max": 100},
         ]

@@ -103,15 +103,29 @@ class BacktestEngine:
     
     def _extract_metrics(self, stats) -> dict:
         """Extract performance metrics from backtest stats."""
+        # Get Sharpe with validation (should be between -10 and 10 realistically)
+        sharpe = stats.get("Sharpe Ratio")
+        if sharpe is not None:
+            sharpe = float(sharpe)
+            if abs(sharpe) > 100:  # Clearly invalid
+                sharpe = None
+        
+        # Get Profit Factor with validation
+        profit_factor = stats.get("Profit Factor")
+        if profit_factor is not None:
+            profit_factor = float(profit_factor)
+            if profit_factor > 1000 or profit_factor < 0:  # Invalid
+                profit_factor = None
+        
         metrics = {
-            "return_pct": float(stats.get("Return [%]", 0)),
-            "buy_hold_return_pct": float(stats.get("Buy & Hold Return [%]", 0)),
-            "max_drawdown_pct": float(stats.get("Max. Drawdown [%]", 0)),
-            "win_rate_pct": float(stats.get("Win Rate [%]", 0)),
-            "total_trades": int(stats.get("# Trades", 0)),
-            "avg_trade_pct": float(stats.get("Avg. Trade [%]", 0)),
-            "sharpe_ratio": stats.get("Sharpe Ratio"),
-            "profit_factor": stats.get("Profit Factor"),
+            "return_pct": float(stats.get("Return [%]", 0) or 0),
+            "buy_hold_return_pct": float(stats.get("Buy & Hold Return [%]", 0) or 0),
+            "max_drawdown_pct": float(stats.get("Max. Drawdown [%]", 0) or 0),
+            "win_rate_pct": float(stats.get("Win Rate [%]", 0) or 0),
+            "total_trades": int(stats.get("# Trades", 0) or 0),
+            "avg_trade_pct": float(stats.get("Avg. Trade [%]", 0) or 0),
+            "sharpe_ratio": sharpe,
+            "profit_factor": profit_factor,
         }
         # Sanitize NaN/Inf values for JSON
         return sanitize_dict_for_json(metrics)

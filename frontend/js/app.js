@@ -39,6 +39,8 @@ const paramInputs = {
     ema2_length: document.getElementById('ema2_length'),
     st_length: document.getElementById('st_length'),
     st_multiplier: document.getElementById('st_multiplier'),
+    stop_loss_pct: document.getElementById('stop_loss_pct'),
+    take_profit_pct: document.getElementById('take_profit_pct'),
 };
 
 /**
@@ -76,12 +78,20 @@ function hideStatus() {
  * Get strategy parameters from inputs
  */
 function getStrategyParams() {
-    return {
+    const baseParams = {
         ema1_length: parseInt(paramInputs.ema1_length.value),
         ema2_length: parseInt(paramInputs.ema2_length.value),
         st_length: parseInt(paramInputs.st_length.value),
         st_multiplier: parseFloat(paramInputs.st_multiplier.value),
     };
+
+    // Only add SL/TP for V2 strategy
+    if (elements.strategy.value === 'vwap_supertrend_ema_v2') {
+        baseParams.stop_loss_pct = parseFloat(paramInputs.stop_loss_pct.value);
+        baseParams.take_profit_pct = parseFloat(paramInputs.take_profit_pct.value);
+    }
+
+    return baseParams;
 }
 
 /**
@@ -280,4 +290,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.endDate.value = today.toISOString().split('T')[0];
     elements.startDate.value = oneWeekAgo.toISOString().split('T')[0];
+
+    // Show/hide SL/TP based on selected strategy
+    toggleSlTpFields();
 });
+
+/**
+ * Toggle SL/TP fields visibility based on selected strategy
+ */
+function toggleSlTpFields() {
+    const strategy = elements.strategy.value;
+    const slTpInputs = [paramInputs.stop_loss_pct, paramInputs.take_profit_pct];
+
+    // Only V2 has SL/TP
+    const showSlTp = strategy === 'vwap_supertrend_ema_v2';
+
+    slTpInputs.forEach(input => {
+        if (input && input.parentElement) {
+            input.parentElement.style.display = showSlTp ? 'block' : 'none';
+        }
+    });
+}
+
