@@ -38,3 +38,6 @@ htmlcov/
 
 # TradingView
 tradingview/
+
+docs/*.md
+.agent/
