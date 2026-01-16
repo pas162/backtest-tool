@@ -86,10 +86,18 @@ async def run_backtest(
             # position_size / initial_capital = fraction of capital per trade
             position_size_pct = (request.position_size / request.initial_capital) * 100
             
-            # Add position sizing to strategy params (only for V2)
-            strategy_params = dict(request.params)
-            if request.strategy == 'vwap_supertrend_ema_v2':
-                strategy_params['position_size_pct'] = position_size_pct
+            # Build strategy params based on strategy type
+            if request.strategy == 'ml_xgboost':
+                # ML strategy only needs its own params
+                strategy_params = {
+                    'buy_threshold': request.params.get('buy_threshold', 0.60),
+                    'sell_threshold': request.params.get('sell_threshold', 0.40),
+                    'stop_loss_pct': request.params.get('stop_loss_pct', 5.0),
+                    'take_profit_pct': request.params.get('take_profit_pct', 10.0),
+                }
+            else:
+                # VWAP and other strategies use passed params
+                strategy_params = dict(request.params)
             
             result = engine.run(
                 strategy_class=strategy_class,

@@ -78,18 +78,25 @@ function hideStatus() {
  * Get strategy parameters from inputs
  */
 function getStrategyParams() {
+    const strategy = elements.strategy.value;
+
+    // ML strategy has its own parameters
+    if (strategy === 'ml_xgboost') {
+        return {
+            buy_threshold: 0.60,
+            sell_threshold: 0.40,
+            stop_loss_pct: 5.0,
+            take_profit_pct: 10.0,
+        };
+    }
+
+    // VWAP SuperTrend EMA strategy
     const baseParams = {
         ema1_length: parseInt(paramInputs.ema1_length.value),
         ema2_length: parseInt(paramInputs.ema2_length.value),
         st_length: parseInt(paramInputs.st_length.value),
         st_multiplier: parseFloat(paramInputs.st_multiplier.value),
     };
-
-    // Only add SL/TP for V2 strategy
-    if (elements.strategy.value === 'vwap_supertrend_ema_v2') {
-        baseParams.stop_loss_pct = parseFloat(paramInputs.stop_loss_pct.value);
-        baseParams.take_profit_pct = parseFloat(paramInputs.take_profit_pct.value);
-    }
 
     return baseParams;
 }
@@ -296,19 +303,21 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * Toggle SL/TP fields visibility based on selected strategy
+ * Toggle params visibility based on selected strategy
  */
 function toggleSlTpFields() {
     const strategy = elements.strategy.value;
-    const slTpInputs = [paramInputs.stop_loss_pct, paramInputs.take_profit_pct];
+    const vwapParams = document.getElementById('vwapParams');
+    const mlParams = document.getElementById('mlParams');
 
-    // Only V2 has SL/TP
-    const showSlTp = strategy === 'vwap_supertrend_ema_v2';
-
-    slTpInputs.forEach(input => {
-        if (input && input.parentElement) {
-            input.parentElement.style.display = showSlTp ? 'block' : 'none';
-        }
-    });
+    if (strategy === 'ml_xgboost') {
+        // ML strategy - hide VWAP params, show ML message
+        if (vwapParams) vwapParams.style.display = 'none';
+        if (mlParams) mlParams.style.display = 'grid';
+    } else {
+        // VWAP strategy - show VWAP params, hide ML message
+        if (vwapParams) vwapParams.style.display = 'grid';
+        if (mlParams) mlParams.style.display = 'none';
+    }
 }
 

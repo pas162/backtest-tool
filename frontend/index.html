@@ -64,15 +64,15 @@
                 <div class="form-group">
                     <label for="strategy">Strategy</label>
                     <select id="strategy" onchange="toggleSlTpFields()">
-                        <option value="vwap_supertrend_ema">V1 - Original</option>
-                        <option value="vwap_supertrend_ema_v2" selected>V2 - Optimized</option>
+                        <option value="vwap_supertrend_ema">VWAP SuperTrend EMA</option>
+                        <option value="ml_xgboost" selected>🤖 ML (XGBoost)</option>
                     </select>
                 </div>
 
-                <!-- Strategy Parameters -->
+                <!-- Strategy Parameters (for VWAP strategy) -->
                 <div id="strategyParams" class="params-section">
                     <h3>Strategy Parameters</h3>
-                    <div class="params-grid">
+                    <div id="vwapParams" class="params-grid">
                         <div class="form-group">
                             <label for="ema1_length">EMA 1</label>
                             <input type="number" id="ema1_length" value="21" min="1">
@@ -89,15 +89,12 @@
                             <label for="st_multiplier">ST Mult</label>
                             <input type="number" id="st_multiplier" value="3.0" min="0.1" step="0.1">
                         </div>
-                        <div class="form-group">
-                            <label for="stop_loss_pct">SL (%)</label>
-                            <input type="number" id="stop_loss_pct" value="20" min="1" max="50" step="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="take_profit_pct">TP (%)</label>
-                            <input type="number" id="take_profit_pct" value="0" min="0" max="100" step="1"
-                                title="0 = Exit on SuperTrend flip">
-                        </div>
+                    </div>
+                    <div id="mlParams" class="params-grid" style="display: none;">
+                        <p style="grid-column: 1/-1; color: #888; font-size: 14px;">
+                            🤖 ML Strategy uses pre-trained model with default parameters.<br>
+                            No additional configuration needed.
+                        </p>
                     </div>
                 </div>
 
