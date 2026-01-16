@@ -1,0 +1,137 @@
+"""
+API routes for Replay Simulator.
+"""
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional
+import pandas as pd
+
+from backend.data.fetcher import BinanceFetcher
+from backend.replay.engine import ReplayEngine
+from backend.replay.agent import SimpleOrderFlowAgent, MomentumAgent
+
+
+router = APIRouter(prefix="/replay", tags=["replay"])
+
+
+class ReplayRequest(BaseModel):
+    """Request to run replay simulation."""
+    symbol: str = "XRPUSDT"
+    timeframe: str = "5m"
+    start_date: str
+    end_date: str
+    agent_type: str = "orderflow"  # "orderflow" or "momentum"
+    initial_capital: float = 100.0
+    position_size: float = 10.0
+    speed: float = 0  # 0 = instant, > 0 = bars per second
+
+
+class ReplayResponse(BaseModel):
+    """Response from replay simulation."""
+    success: bool
+    total_trades: int
+    wins: int
+    losses: int
+    win_rate: float
+    return_pct: float
+    equity: float
+    trades: list
+    decision_log: list
+    equity_curve: list
+
+
+@router.post("/run", response_model=ReplayResponse)
+async def run_replay(request: ReplayRequest):
+    """
+    Run replay simulation on historical data.
+    
+    The agent will process data bar-by-bar, only seeing
+    historical data up to the current bar (no look-ahead).
+    """
+    try:
+        # Parse dates
+        start_dt = datetime.strptime(request.start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(request.end_date, "%Y-%m-%d")
+        
+        # Fetch historical data
+        fetcher = BinanceFetcher()
+        try:
+            ohlcv_data = await fetcher.fetch_ohlcv(
+                symbol=request.symbol,
+                timeframe=request.timeframe,
+                start_time=start_dt,
+                end_time=end_dt,
+            )
+        finally:
+            await fetcher.close()
+        
+        if not ohlcv_data:
+            raise HTTPException(status_code=400, detail="No data fetched")
+        
+        # Convert to DataFrame
+        data = pd.DataFrame(ohlcv_data)
+        data['timestamp'] = pd.to_datetime(data['timestamp'])
+        data = data.set_index('timestamp')
+        data = data.rename(columns={
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume'
+        })
+        
+        # Create agent
+        if request.agent_type == "orderflow":
+            agent = SimpleOrderFlowAgent()
+        elif request.agent_type == "momentum":
+            agent = MomentumAgent()
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown agent: {request.agent_type}")
+        
+        # Create replay engine
+        engine = ReplayEngine(
+            data=data,
+            agent=agent,
+            initial_capital=request.initial_capital,
+            position_size=request.position_size,
+        )
+        
+        # Run simulation
+        results = await engine.run(speed=request.speed)
+        
+        return ReplayResponse(
+            success=True,
+            total_trades=results.get("total_trades", 0),
+            wins=results.get("wins", 0),
+            losses=results.get("losses", 0),
+            win_rate=results.get("win_rate", 0),
+            return_pct=results.get("return_pct", 0),
+            equity=results.get("equity", request.initial_capital),
+            trades=results.get("trades", []),
+            decision_log=results.get("decision_log", []),
+            equity_curve=results.get("equity_curve", []),
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agents")
+async def list_agents():
+    """List available trading agents."""
+    return {
+        "agents": [
+            {
+                "id": "orderflow",
+                "name": "Order Flow Agent",
+                "description": "Uses volume delta and CVD for decisions",
+            },
+            {
+                "id": "momentum",
+                "name": "Momentum Agent", 
+                "description": "Uses price momentum for decisions",
+            },
+        ]
+    }

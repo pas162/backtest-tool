@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Replay Simulator</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        .replay-container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .control-panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .results-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .chart-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            min-height: 400px;
+        }
+
+        .decision-log {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            padding: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 12px;
+        }
+
+        .log-entry.buy {
+            border-left: 3px solid #00ff88;
+        }
+
+        .log-entry.sell {
+            border-left: 3px solid #ff4444;
+        }
+
+        .log-entry.close {
+            border-left: 3px solid #ffaa00;
+        }
+
+        .log-entry.hold {
+            border-left: 3px solid #666;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .positive {
+            color: #00ff88;
+        }
+
+        .negative {
+            color: #ff4444;
+        }
+
+        .agent-select {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .agent-btn {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #444;
+            border-radius: 8px;
+            background: transparent;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .agent-btn.active {
+            border-color: #00ff88;
+            background: rgba(0, 255, 136, 0.2);
+        }
+
+        .agent-btn:hover {
+            border-color: #00ff88;
+        }
+
+        #runReplay {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            border: none;
+            border-radius: 8px;
+            color: black;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        #runReplay:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 255, 136, 0.3);
+        }
+
+        #runReplay:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .header {
+            text-align: center;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+
+        .header p {
+            margin: 5px 0 0;
+            color: #888;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <h1>🤖 AI Replay Simulator</h1>
+        <p>Simulates real-time trading with historical data - No look-ahead bias</p>
+    </header>
+
+    <div class="replay-container">
+        <section class="control-panel">
+            <h2>Configuration</h2>
+
+            <div class="form-group">
+                <label>Agent Type</label>
+                <div class="agent-select">
+                    <button class="agent-btn active" data-agent="orderflow">📊 Order Flow</button>
+                    <button class="agent-btn" data-agent="momentum">📈 Momentum</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="symbol">Symbol</label>
+                <select id="symbol">
+                    <option value="XRPUSDT" selected>XRPUSDT</option>
+                    <option value="SOLUSDT">SOLUSDT</option>
+                    <option value="BTCUSDT">BTCUSDT</option>
+                    <option value="ETHUSDT">ETHUSDT</option>
+                    <option value="DOGEUSDT">DOGEUSDT</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="timeframe">Timeframe</label>
+                <select id="timeframe">
+                    <option value="5m" selected>5 Minutes</option>
+                    <option value="15m">15 Minutes</option>
+                    <option value="1h">1 Hour</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="startDate">Start Date</label>
+                <input type="date" id="startDate">
+            </div>
+
+            <div class="form-group">
+                <label for="endDate">End Date</label>
+                <input type="date" id="endDate">
+            </div>
+
+            <div class="form-group">
+                <label for="capital">Initial Capital ($)</label>
+                <input type="number" id="capital" value="100">
+            </div>
+
+            <div class="form-group">
+                <label for="positionSize">Position Size ($)</label>
+                <input type="number" id="positionSize" value="10">
+            </div>
+
+            <button id="runReplay">▶️ Run Replay Simulation</button>
+        </section>
+
+        <div class="results-panel">
+            <div class="metrics-grid" id="metricsGrid" style="display: none;">
+                <div class="metric-card">
+                    <div class="metric-value" id="returnPct">0%</div>
+                    <div class="metric-label">Return</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="winRate">0%</div>
+                    <div class="metric-label">Win Rate</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="totalTrades">0</div>
+                    <div class="metric-label">Trades</div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>Equity Curve</h3>
+                <div id="equityChart" style="width: 100%; height: 300px;"></div>
+            </div>
+
+            <div class="decision-log">
+                <h3>AI Decision Log</h3>
+                <div id="decisionLog">
+                    <p style="color: #666; text-align: center;">Run a simulation to see AI decisions...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize dates
+        const today = new Date();
+        const weekAgo = new Date(today - 7 * 24 * 60 * 60 * 1000);
+        document.getElementById('startDate').value = weekAgo.toISOString().split('T')[0];
+        document.getElementById('endDate').value = today.toISOString().split('T')[0];
+
+        // Agent selection
+        let selectedAgent = 'orderflow';
+        document.querySelectorAll('.agent-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.agent-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                selectedAgent = btn.dataset.agent;
+            });
+        });
+
+        // Run replay
+        document.getElementById('runReplay').addEventListener('click', async () => {
+            const btn = document.getElementById('runReplay');
+            btn.disabled = true;
+            btn.textContent = '⏳ Running simulation...';
+
+            try {
+                const response = await fetch('/api/replay/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol: document.getElementById('symbol').value,
+                        timeframe: document.getElementById('timeframe').value,
+                        start_date: document.getElementById('startDate').value,
+                        end_date: document.getElementById('endDate').value,
+                        agent_type: selectedAgent,
+                        initial_capital: parseFloat(document.getElementById('capital').value),
+                        position_size: parseFloat(document.getElementById('positionSize').value),
+                        speed: 0
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayResults(data);
+                } else {
+                    alert('Simulation failed: ' + (data.detail || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '▶️ Run Replay Simulation';
+            }
+        });
+
+        function displayResults(data) {
+            // Show metrics
+            document.getElementById('metricsGrid').style.display = 'grid';
+
+            const returnPct = document.getElementById('returnPct');
+            returnPct.textContent = data.return_pct.toFixed(2) + '%';
+            returnPct.className = 'metric-value ' + (data.return_pct >= 0 ? 'positive' : 'negative');
+
+            document.getElementById('winRate').textContent = data.win_rate.toFixed(1) + '%';
+            document.getElementById('totalTrades').textContent = data.total_trades;
+
+            // Plot equity curve
+            if (data.equity_curve && data.equity_curve.length > 0) {
+                const times = data.equity_curve.map(e => e.time);
+                const values = data.equity_curve.map(e => e.equity);
+
+                Plotly.newPlot('equityChart', [{
+                    x: times,
+                    y: values,
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: '#00ff88', width: 2 },
+                    fill: 'tozeroy',
+                    fillcolor: 'rgba(0,255,136,0.1)'
+                }], {
+                    paper_bgcolor: 'transparent',
+                    plot_bgcolor: 'transparent',
+                    font: { color: '#fff' },
+                    xaxis: { gridcolor: 'rgba(255,255,255,0.1)' },
+                    yaxis: { gridcolor: 'rgba(255,255,255,0.1)', title: 'Equity ($)' },
+                    margin: { l: 50, r: 20, t: 20, b: 50 }
+                });
+            }
+
+            // Display decision log
+            const logContainer = document.getElementById('decisionLog');
+            if (data.decision_log && data.decision_log.length > 0) {
+                // Show all entries, not just non-HOLD ones
+                const logsToShow = data.decision_log.slice(-100);
+                logContainer.innerHTML = logsToShow.map(log => `
+                    <div class="log-entry ${log.decision.toLowerCase()}">
+                        <strong>${log.time.split('T')[0]} ${log.time.split('T')[1]?.substring(0, 8) || ''}</strong> | 
+                        <span style="color: ${getDecisionColor(log.decision)}">${log.decision}</span> @ $${log.price.toFixed(4)}
+                        <br><small>${log.reasoning}</small>
+                    </div>
+                `).join('');
+            } else {
+                logContainer.innerHTML = '<p style="color: #666;">No trading decisions made</p>';
+            }
+        }
+
+        function getDecisionColor(decision) {
+            switch (decision) {
+                case 'BUY': return '#00ff88';
+                case 'SELL': return '#ff4444';
+                case 'CLOSE': return '#ffaa00';
+                default: return '#666';
+            }
+        }
+    </script>
+</body>
+
+</html>

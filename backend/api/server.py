@@ -11,7 +11,7 @@ import sys
 
 from backend.config import settings
 from backend.database.connection import init_db, close_db
-from backend.api.routes import data_router, backtest_router
+from backend.api.routes import data_router, backtest_router, replay_router
 
 
 # Configure logging
@@ -49,6 +49,7 @@ app = FastAPI(
 # Include API routers
 app.include_router(data_router, prefix=settings.api_prefix)
 app.include_router(backtest_router, prefix=settings.api_prefix)
+app.include_router(replay_router, prefix=settings.api_prefix)
 
 # Mount static files for frontend
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
@@ -58,6 +59,12 @@ app.mount("/static", StaticFiles(directory="frontend"), name="static")
 async def root():
     """Serve the main dashboard."""
     return FileResponse("frontend/index.html")
+
+
+@app.get("/replay")
+async def replay_page():
+    """Serve the AI Replay Simulator page."""
+    return FileResponse("frontend/replay.html")
 
 
 @app.get("/health")
