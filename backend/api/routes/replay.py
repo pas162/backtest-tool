@@ -12,6 +12,13 @@ from backend.data.fetcher import BinanceFetcher
 from backend.replay.engine import ReplayEngine
 from backend.replay.agent import SimpleOrderFlowAgent, MomentumAgent
 
+# Try to import ML agent
+try:
+    from backend.ml.agent import MLTradingAgent
+    HAS_ML_AGENT = True
+except ImportError:
+    HAS_ML_AGENT = False
+
 
 router = APIRouter(prefix="/replay", tags=["replay"])
 
@@ -87,6 +94,12 @@ async def run_replay(request: ReplayRequest):
             agent = SimpleOrderFlowAgent()
         elif request.agent_type == "momentum":
             agent = MomentumAgent()
+        elif request.agent_type == "ml":
+            if not HAS_ML_AGENT:
+                raise HTTPException(status_code=400, detail="ML agent not available")
+            agent = MLTradingAgent()
+            if not agent.is_model_loaded:
+                raise HTTPException(status_code=400, detail="ML model not trained. Run /api/replay/train first")
         else:
             raise HTTPException(status_code=400, detail=f"Unknown agent: {request.agent_type}")
         
@@ -121,17 +134,74 @@ async def run_replay(request: ReplayRequest):
 @router.get("/agents")
 async def list_agents():
     """List available trading agents."""
-    return {
-        "agents": [
-            {
-                "id": "orderflow",
-                "name": "Order Flow Agent",
-                "description": "Uses volume delta and CVD for decisions",
-            },
-            {
-                "id": "momentum",
-                "name": "Momentum Agent", 
-                "description": "Uses price momentum for decisions",
-            },
-        ]
-    }
+    agents = [
+        {
+            "id": "orderflow",
+            "name": "Order Flow Agent",
+            "description": "Uses volume delta and CVD for decisions",
+        },
+        {
+            "id": "momentum",
+            "name": "Momentum Agent", 
+            "description": "Uses price momentum for decisions",
+        },
+    ]
+    
+    if HAS_ML_AGENT:
+        agents.append({
+            "id": "ml",
+            "name": "ML Agent (XGBoost)",
+            "description": "Machine learning model trained on historical data",
+        })
+    
+    return {"agents": agents}
+
+
+class TrainRequest(BaseModel):
+    """Request to train ML model."""
+    symbol: str = "XRPUSDT"
+    timeframe: str = "5m"
+    days: int = 90
+    lookahead: int = 5
+    threshold: float = 0.002
+
+
+@router.post("/train")
+async def train_ml_model(request: TrainRequest):
+    """
+    Train ML model on historical data.
+    
+    This may take a few minutes.
+    """
+    if not HAS_ML_AGENT:
+        raise HTTPException(status_code=400, detail="ML module not available")
+    
+    try:
+        from backend.ml.trainer import ModelTrainer
+        
+        trainer = ModelTrainer()
+        
+        # Prepare data
+        X, y = await trainer.prepare_data(
+            symbol=request.symbol,
+            timeframe=request.timeframe,
+            days=request.days,
+            lookahead=request.lookahead,
+            threshold=request.threshold,
+        )
+        
+        # Train model
+        metrics = trainer.train(X, y)
+        
+        # Save model
+        model_path = trainer.save_model("trading_model")
+        
+        return {
+            "success": True,
+            "model_path": model_path,
+            "metrics": metrics,
+            "samples": len(X),
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
