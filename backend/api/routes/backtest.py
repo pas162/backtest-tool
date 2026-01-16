@@ -203,6 +203,20 @@ async def run_backtest(
             raise HTTPException(500, f"Failed to save results: {str(e)}")
         
         logger.info("=== BACKTEST SUCCESS ===")
+        
+        # Prepare candles for chart (limit to max 1000 for performance)
+        candles_data = []
+        df_sample = df.tail(1000)  # Last 1000 candles
+        for idx, row in df_sample.iterrows():
+            candles_data.append({
+                "timestamp": idx.isoformat() if hasattr(idx, 'isoformat') else str(idx),
+                "open": float(row['Open']),
+                "high": float(row['High']),
+                "low": float(row['Low']),
+                "close": float(row['Close']),
+                "volume": float(row.get('Volume', 0)),
+            })
+        
         return BacktestResponse(
             id=backtest_run.id,
             symbol=request.symbol,
@@ -213,7 +227,8 @@ async def run_backtest(
             params=request.params,
             metrics=BacktestMetrics(**result['metrics']),
             equity_curve=result['equity_curve'],
-            trades=[TradeRecord(**t) for t in result['trades']]
+            trades=[TradeRecord(**t) for t in result['trades']],
+            candles=candles_data
         )
         
     except HTTPException:

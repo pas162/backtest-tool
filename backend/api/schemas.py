@@ -86,6 +86,7 @@ class BacktestResponse(BaseModel):
     metrics: BacktestMetrics
     equity_curve: list[dict]  # [{timestamp, equity}, ...]
     trades: list[TradeRecord]
+    candles: Optional[list[dict]] = None  # [{timestamp, open, high, low, close, volume}, ...]
 
 
 # ============ Strategy Schemas ============

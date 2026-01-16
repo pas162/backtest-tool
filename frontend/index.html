@@ -7,6 +7,7 @@
     <title>Backtest Platform</title>
     <link rel="stylesheet" href="/static/css/styles.css">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 
 <body>
@@ -167,6 +168,12 @@
                         <span class="metric-label">Profit Factor</span>
                         <span class="metric-value" id="profitFactor">-</span>
                     </div>
+                </div>
+
+                <!-- Candlestick Chart with Trades -->
+                <div class="chart-container" style="margin-bottom: 20px;">
+                    <h3>📊 Chart with Trades</h3>
+                    <div id="candlestickChart" style="width: 100%; height: 400px;"></div>
                 </div>
 
                 <!-- Equity Curve Chart -->

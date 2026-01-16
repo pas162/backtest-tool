@@ -179,6 +179,7 @@ async function runBacktest() {
  */
 function displayResults(data) {
     updateMetrics(data.metrics);
+    drawCandlestickChart(data.candles, data.trades);
     drawEquityCurve(data.equity_curve);
     populateTradesTable(data.trades);
 }
@@ -206,6 +207,114 @@ function updateMetrics(metrics) {
 
     elements.profitFactor.textContent = formatNum(metrics.profit_factor);
     elements.profitFactor.className = `metric-value ${metrics.profit_factor >= 1 ? 'positive' : 'negative'}`;
+}
+
+/**
+ * Draw candlestick chart with trade markers using Lightweight Charts
+ */
+let candlestickChart = null;
+
+function drawCandlestickChart(candles, trades) {
+    const container = document.getElementById('candlestickChart');
+    if (!container) return;
+
+    // Clear previous chart
+    container.innerHTML = '';
+
+    // If no candles data, show message
+    if (!candles || candles.length === 0) {
+        container.innerHTML = '<p style="color: #666; text-align: center; padding: 50px;">No chart data available</p>';
+        return;
+    }
+
+    // Create chart
+    candlestickChart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: 400,
+        layout: {
+            background: { color: '#21262d' },
+            textColor: '#c9d1d9',
+        },
+        grid: {
+            vertLines: { color: '#30363d' },
+            horzLines: { color: '#30363d' },
+        },
+        crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+            borderColor: '#30363d',
+        },
+        timeScale: {
+            borderColor: '#30363d',
+            timeVisible: true,
+            secondsVisible: false,
+        },
+    });
+
+    // Add candlestick series
+    const candlestickSeries = candlestickChart.addCandlestickSeries({
+        upColor: '#26a69a',
+        downColor: '#ef5350',
+        borderVisible: false,
+        wickUpColor: '#26a69a',
+        wickDownColor: '#ef5350',
+    });
+
+    // Format candle data
+    const formattedCandles = candles.map(c => ({
+        time: Math.floor(new Date(c.timestamp).getTime() / 1000),
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+    }));
+
+    candlestickSeries.setData(formattedCandles);
+
+    // Add trade markers
+    if (trades && trades.length > 0) {
+        const markers = [];
+
+        trades.forEach(trade => {
+            // Entry marker
+            if (trade.entry_time) {
+                markers.push({
+                    time: Math.floor(new Date(trade.entry_time).getTime() / 1000),
+                    position: 'belowBar',
+                    color: '#26a69a',
+                    shape: 'arrowUp',
+                    text: 'BUY',
+                });
+            }
+
+            // Exit marker
+            if (trade.exit_time) {
+                const isProfit = trade.pnl_pct > 0;
+                markers.push({
+                    time: Math.floor(new Date(trade.exit_time).getTime() / 1000),
+                    position: 'aboveBar',
+                    color: isProfit ? '#26a69a' : '#ef5350',
+                    shape: 'arrowDown',
+                    text: `${isProfit ? '+' : ''}${trade.pnl_pct?.toFixed(1)}%`,
+                });
+            }
+        });
+
+        // Sort markers by time
+        markers.sort((a, b) => a.time - b.time);
+        candlestickSeries.setMarkers(markers);
+    }
+
+    // Fit content
+    candlestickChart.timeScale().fitContent();
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+        if (candlestickChart) {
+            candlestickChart.applyOptions({ width: container.clientWidth });
+        }
+    });
 }
 
 /**

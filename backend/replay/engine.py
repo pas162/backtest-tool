@@ -315,7 +315,7 @@ class ReplayEngine:
                 "equity": self.state.equity,
                 "return_pct": 0,
                 "trades": [],
-                "decision_log": [self._log_to_dict(l) for l in self.state.decision_log[-100:]],
+                "decision_log": [self._log_to_dict(l) for l in self.state.decision_log if l.decision != Decision.HOLD],
             }
         
         wins = [t for t in trades if t.pnl > 0]
@@ -333,7 +333,8 @@ class ReplayEngine:
             "avg_loss": sum(t.pnl for t in losses) / len(losses) if losses else 0,
             "trades": [self._trade_to_dict(t) for t in trades],
             "equity_curve": self.state.equity_curve,
-            "decision_log": [self._log_to_dict(l) for l in self.state.decision_log[-100:]],
+            # Return ALL non-HOLD decisions for accurate chart markers
+            "decision_log": [self._log_to_dict(l) for l in self.state.decision_log if l.decision != Decision.HOLD],
         }
     
     def _trade_to_dict(self, trade: Trade) -> dict:

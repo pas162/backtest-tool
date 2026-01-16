@@ -67,6 +67,12 @@ async def replay_page():
     return FileResponse("frontend/replay.html")
 
 
+@app.get("/trader")
+async def trader_page():
+    """Serve the new Trading Replay page."""
+    return FileResponse("frontend/trader-replay.html")
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""

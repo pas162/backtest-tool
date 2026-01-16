@@ -28,8 +28,8 @@ class MLStrategy(BaseStrategy):
     
     # Strategy parameters
     model_path = "models/trading_model.pkl"
-    buy_threshold = 0.60
-    sell_threshold = 0.40
+    buy_threshold = 0.55
+    sell_threshold = 0.45
     stop_loss_pct = 5.0
     take_profit_pct = 10.0
     

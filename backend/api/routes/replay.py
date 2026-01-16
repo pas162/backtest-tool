@@ -12,9 +12,10 @@ from backend.data.fetcher import BinanceFetcher
 from backend.replay.engine import ReplayEngine
 from backend.replay.agent import SimpleOrderFlowAgent, MomentumAgent
 
-# Try to import ML agent
+# Try to import ML agents
 try:
     from backend.ml.agent import MLTradingAgent
+    from backend.ml.fast_agent import FastMLAgent
     HAS_ML_AGENT = True
 except ImportError:
     HAS_ML_AGENT = False
@@ -47,6 +48,7 @@ class ReplayResponse(BaseModel):
     trades: list
     decision_log: list
     equity_curve: list
+    candles: list = []  # OHLCV candles for chart
 
 
 @router.post("/run", response_model=ReplayResponse)
@@ -97,9 +99,12 @@ async def run_replay(request: ReplayRequest):
         elif request.agent_type == "ml":
             if not HAS_ML_AGENT:
                 raise HTTPException(status_code=400, detail="ML agent not available")
-            agent = MLTradingAgent()
+            # Use FastMLAgent for instant replay
+            agent = FastMLAgent()
             if not agent.is_model_loaded:
                 raise HTTPException(status_code=400, detail="ML model not trained. Run /api/replay/train first")
+            # Pre-calculate ALL predictions (this is the key optimization!)
+            agent.prepare(data)
         else:
             raise HTTPException(status_code=400, detail=f"Unknown agent: {request.agent_type}")
         
@@ -114,6 +119,17 @@ async def run_replay(request: ReplayRequest):
         # Run simulation
         results = await engine.run(speed=request.speed)
         
+        # Format candles for Lightweight Charts (time as Unix timestamp)
+        candles_for_chart = []
+        for idx, row in data.iterrows():
+            candles_for_chart.append({
+                "time": int(idx.timestamp()),  # Unix timestamp
+                "open": float(row['Open']),
+                "high": float(row['High']),
+                "low": float(row['Low']),
+                "close": float(row['Close']),
+            })
+        
         return ReplayResponse(
             success=True,
             total_trades=results.get("total_trades", 0),
@@ -125,6 +141,7 @@ async def run_replay(request: ReplayRequest):
             trades=results.get("trades", []),
             decision_log=results.get("decision_log", []),
             equity_curve=results.get("equity_curve", []),
+            candles=candles_for_chart,
         )
     
     except Exception as e:
