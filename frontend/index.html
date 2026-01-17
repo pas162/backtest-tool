@@ -357,10 +357,182 @@
             background: #363a45;
             border-radius: 3px;
         }
+
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #1e222d;
+            border-radius: 12px;
+            padding: 24px;
+            min-width: 400px;
+            max-width: 500px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            border: 1px solid #2a2e39;
+        }
+
+        .modal h2 {
+            margin: 0 0 20px 0;
+            color: #fff;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #2a2e39;
+        }
+
+        .modal-row:last-of-type {
+            border-bottom: none;
+        }
+
+        .modal-row label {
+            color: #d1d4dc;
+            font-size: 14px;
+        }
+
+        .modal-row .hint {
+            color: #787b86;
+            font-size: 11px;
+            margin-top: 2px;
+        }
+
+        .modal-row input,
+        .modal-row select {
+            background: #2a2e39;
+            border: 1px solid #363a45;
+            color: #d1d4dc;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            width: 120px;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: flex-end;
+        }
+
+        .modal-actions button {
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .modal-actions .btn-cancel {
+            background: #2a2e39;
+            color: #d1d4dc;
+        }
+
+        .modal-actions .btn-cancel:hover {
+            background: #363a45;
+        }
+
+        .modal-actions .btn-train {
+            background: #ff9800;
+            color: #fff;
+        }
+
+        .modal-actions .btn-train:hover {
+            background: #f57c00;
+        }
+
+        .modal-actions .btn-train:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 
 <body>
+    <!-- Training Settings Modal -->
+    <div class="modal-overlay" id="trainModal">
+        <div class="modal">
+            <h2>🧠 Train ML Model</h2>
+            
+            <div class="modal-row">
+                <div>
+                    <label>Symbol</label>
+                    <div class="hint">Trading pair to train on</div>
+                </div>
+                <select id="trainSymbol">
+                    <option value="XRPUSDT">XRPUSDT</option>
+                    <option value="BTCUSDT">BTCUSDT</option>
+                    <option value="ETHUSDT">ETHUSDT</option>
+                    <option value="SOLUSDT">SOLUSDT</option>
+                </select>
+            </div>
+
+            <div class="modal-row">
+                <div>
+                    <label>Timeframe</label>
+                    <div class="hint">Candle timeframe</div>
+                </div>
+                <select id="trainTimeframe">
+                    <option value="1m">1 minute</option>
+                    <option value="5m" selected>5 minutes</option>
+                    <option value="15m">15 minutes</option>
+                    <option value="1h">1 hour</option>
+                </select>
+            </div>
+
+            <div class="modal-row">
+                <div>
+                    <label>Training Days</label>
+                    <div class="hint">Days of historical data (30-365)</div>
+                </div>
+                <input type="number" id="trainDays" value="90" min="30" max="365">
+            </div>
+
+            <div class="modal-row">
+                <div>
+                    <label>Lookahead Bars</label>
+                    <div class="hint">Bars to look ahead for labeling</div>
+                </div>
+                <input type="number" id="trainLookahead" value="5" min="1" max="20">
+            </div>
+
+            <div class="modal-row">
+                <div>
+                    <label>Threshold %</label>
+                    <div class="hint">Min price change to label as UP</div>
+                </div>
+                <input type="number" id="trainThreshold" value="0.2" min="0.1" max="2" step="0.1">
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" id="trainCancelBtn">Cancel</button>
+                <button class="btn-train" id="trainConfirmBtn">🚀 Start Training</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <header>
             <h1>🤖 AI Trading Replay</h1>
@@ -427,6 +599,7 @@
                 </div>
                 <button class="control-btn" id="trainBtn" style="background: #ff9800;">🧠 Train Model</button>
                 <button class="control-btn primary" id="loadBtn">📊 Load Data</button>
+                <span id="modelStatus" style="font-size: 12px; color: #787b86; margin-left: 10px;">No model loaded</span>
             </div>
         </div>
 
@@ -575,12 +748,28 @@
         // DOM Elements
         const loadBtn = document.getElementById('loadBtn');
         const trainBtn = document.getElementById('trainBtn');
+        const trainModal = document.getElementById('trainModal');
+        const trainCancelBtn = document.getElementById('trainCancelBtn');
+        const trainConfirmBtn = document.getElementById('trainConfirmBtn');
+        const modelStatus = document.getElementById('modelStatus');
         const playBtn = document.getElementById('playBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const resetBtn = document.getElementById('resetBtn');
         const progressFill = document.getElementById('progressFill');
         const currentBarEl = document.getElementById('currentBar');
         const totalBarsEl = document.getElementById('totalBars');
+
+        // Modal functions
+        function openTrainModal() {
+            // Sync symbol from main UI to modal
+            document.getElementById('trainSymbol').value = document.getElementById('symbol').value;
+            document.getElementById('trainTimeframe').value = document.getElementById('timeframe').value;
+            trainModal.classList.add('active');
+        }
+
+        function closeTrainModal() {
+            trainModal.classList.remove('active');
+        }
 
         // Save settings to localStorage
         function saveSettings() {
@@ -1176,12 +1365,18 @@
             tbody.insertBefore(row, tbody.firstChild);
         }
 
-        // Train ML Model
+        // Train ML Model (called from modal)
         async function trainModel() {
-            trainBtn.disabled = true;
-            trainBtn.textContent = '⏳ Training...';
+            trainConfirmBtn.disabled = true;
+            trainConfirmBtn.textContent = '⏳ Training...';
+            modelStatus.textContent = 'Training...';
+            modelStatus.style.color = '#ff9800';
 
-            const symbol = document.getElementById('symbol').value;
+            const symbol = document.getElementById('trainSymbol').value;
+            const timeframe = document.getElementById('trainTimeframe').value;
+            const days = parseInt(document.getElementById('trainDays').value) || 90;
+            const lookahead = parseInt(document.getElementById('trainLookahead').value) || 5;
+            const threshold = (parseFloat(document.getElementById('trainThreshold').value) || 0.2) / 100; // Convert % to decimal
 
             try {
                 const response = await fetch('/api/replay/train', {
@@ -1189,8 +1384,10 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         symbol: symbol,
-                        timeframe: '5m',
-                        days: 90
+                        timeframe: timeframe,
+                        days: days,
+                        lookahead: lookahead,
+                        threshold: threshold
                     })
                 });
 
@@ -1198,24 +1395,33 @@
 
                 if (data.success) {
                     const acc = (data.metrics.accuracy * 100).toFixed(1);
-                    alert(`✅ Model trained successfully!\n\nSymbol: ${symbol}\nSamples: ${data.samples}\nAccuracy: ${acc}%`);
-                    trainBtn.textContent = '✅ Trained';
+                    const precision = (data.metrics.precision * 100).toFixed(1);
+                    closeTrainModal();
+                    alert(`✅ Model trained successfully!\n\nSymbol: ${symbol}\nTimeframe: ${timeframe}\nDays: ${days}\nSamples: ${data.samples}\n\nAccuracy: ${acc}%\nPrecision: ${precision}%`);
                     trainBtn.style.background = '#26a69a';
+                    modelStatus.textContent = `✅ ${symbol} ${timeframe} (${acc}% acc)`;
+                    modelStatus.style.color = '#26a69a';
                 } else {
                     throw new Error(data.detail || 'Training failed');
                 }
             } catch (error) {
                 alert('❌ Training failed: ' + error.message);
-                trainBtn.textContent = '🧠 Train Model';
-                trainBtn.style.background = '#ff9800';
+                modelStatus.textContent = '❌ Training failed';
+                modelStatus.style.color = '#ef5350';
             } finally {
-                trainBtn.disabled = false;
+                trainConfirmBtn.disabled = false;
+                trainConfirmBtn.textContent = '🚀 Start Training';
             }
         }
 
         // Event listeners
         loadBtn.addEventListener('click', loadData);
-        trainBtn.addEventListener('click', trainModel);
+        trainBtn.addEventListener('click', openTrainModal);
+        trainCancelBtn.addEventListener('click', closeTrainModal);
+        trainConfirmBtn.addEventListener('click', trainModel);
+        trainModal.addEventListener('click', (e) => {
+            if (e.target === trainModal) closeTrainModal();
+        });
         playBtn.addEventListener('click', play);
         pauseBtn.addEventListener('click', pause);
         resetBtn.addEventListener('click', reset);
