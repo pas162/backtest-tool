@@ -264,6 +264,86 @@
             font-size: 11px;
         }
 
+        /* Enhanced Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .stats-grid .position-row {
+            padding: 4px 0;
+        }
+
+        /* Win/Loss Bar */
+        .winloss-bar {
+            height: 8px;
+            background: #ef5350;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 12px;
+        }
+
+        .winloss-bar .win-portion {
+            height: 100%;
+            background: #26a69a;
+            transition: width 0.3s ease;
+        }
+
+        /* Mini Equity Chart */
+        .mini-equity-chart {
+            height: 80px;
+            margin-top: 12px;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        /* Trade Log Table */
+        .trade-table {
+            width: 100%;
+            font-size: 11px;
+            border-collapse: collapse;
+        }
+
+        .trade-table th {
+            text-align: left;
+            padding: 6px 4px;
+            color: #787b86;
+            border-bottom: 1px solid #2a2e39;
+            font-weight: 500;
+        }
+
+        .trade-table td {
+            padding: 6px 4px;
+            border-bottom: 1px solid #2a2e39;
+        }
+
+        .trade-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .trade-table .side-long {
+            color: #26a69a;
+        }
+
+        .trade-table .side-short {
+            color: #ef5350;
+        }
+
+        .trade-table .pnl-positive {
+            color: #26a69a;
+        }
+
+        .trade-table .pnl-negative {
+            color: #ef5350;
+        }
+
+        /* Stat highlight */
+        .stat-highlight {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
         /* Scrollbar */
         ::-webkit-scrollbar {
             width: 6px;
@@ -375,28 +455,76 @@
                 </div>
             </div>
 
-            <div class="status-panel">
+            <div class="status-panel" style="grid-column: span 2;">
                 <h3>📈 Statistics</h3>
-                <div class="position-info" id="statsInfo">
+                <div class="stats-grid" id="statsInfo">
                     <div class="position-row">
                         <span class="position-label">Total Trades</span>
-                        <span class="position-value" id="totalTrades">0</span>
+                        <span class="position-value stat-highlight" id="totalTrades">0</span>
                     </div>
                     <div class="position-row">
                         <span class="position-label">Win Rate</span>
-                        <span class="position-value" id="winRate">-</span>
+                        <span class="position-value stat-highlight" id="winRate">-</span>
                     </div>
                     <div class="position-row">
-                        <span class="position-label">Profit/Loss</span>
+                        <span class="position-label">Total P/L</span>
                         <span class="position-value" id="totalPnl">$0.00</span>
                     </div>
+                    <div class="position-row">
+                        <span class="position-label">Max Drawdown</span>
+                        <span class="position-value loss" id="maxDrawdown">-</span>
+                    </div>
+                    <div class="position-row">
+                        <span class="position-label">Best Trade</span>
+                        <span class="position-value profit" id="bestTrade">-</span>
+                    </div>
+                    <div class="position-row">
+                        <span class="position-label">Worst Trade</span>
+                        <span class="position-value loss" id="worstTrade">-</span>
+                    </div>
+                    <div class="position-row">
+                        <span class="position-label">Avg Win</span>
+                        <span class="position-value profit" id="avgWin">-</span>
+                    </div>
+                    <div class="position-row">
+                        <span class="position-label">Avg Loss</span>
+                        <span class="position-value loss" id="avgLoss">-</span>
+                    </div>
+                    <div class="position-row">
+                        <span class="position-label">Profit Factor</span>
+                        <span class="position-value" id="profitFactor">-</span>
+                    </div>
+                    <div class="position-row">
+                        <span class="position-label">Win Streak</span>
+                        <span class="position-value" id="winStreak">-</span>
+                    </div>
                 </div>
+                <!-- Win/Loss Bar -->
+                <div class="winloss-bar">
+                    <div class="win-portion" id="winPortion" style="width: 0%"></div>
+                </div>
+                <!-- Mini Equity Chart -->
+                <div class="mini-equity-chart" id="miniEquityChart"></div>
             </div>
 
-            <div class="status-panel">
+            <div class="status-panel" style="grid-column: span 2;">
                 <h3>📝 Trade Log</h3>
                 <div class="trade-log" id="tradeLog">
-                    <p style="color: #787b86;">Trades will appear here...</p>
+                    <table class="trade-table">
+                        <thead>
+                            <tr>
+                                <th>Side</th>
+                                <th>Entry</th>
+                                <th>Exit</th>
+                                <th>PnL %</th>
+                                <th>PnL $</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tradeTableBody">
+                        </tbody>
+                    </table>
+                    <p id="noTradesMsg" style="color: #787b86; text-align: center; padding: 20px;">Trades will appear
+                        here...</p>
                 </div>
             </div>
         </div>
@@ -418,6 +546,9 @@
         let trades = [];
         let markers = [];
         let markersPrimitive = null;  // For V5 markers API
+        let equityChart = null;       // Mini equity chart
+        let equitySeries = null;      // Equity line series
+        let equityData = [];          // Equity curve data points
 
         // DOM Elements
         const loadBtn = document.getElementById('loadBtn');
@@ -485,6 +616,68 @@
             });
         }
 
+        // Initialize mini equity chart
+        function initEquityChart() {
+            const container = document.getElementById('miniEquityChart');
+            if (!container) return;
+            container.innerHTML = '';
+
+            equityChart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 80,
+                layout: {
+                    background: { color: '#1e222d' },
+                    textColor: '#787b86',
+                },
+                grid: {
+                    vertLines: { visible: false },
+                    horzLines: { color: '#2a2e39' },
+                },
+                rightPriceScale: {
+                    visible: false,
+                },
+                leftPriceScale: {
+                    visible: true,
+                    borderVisible: false,
+                },
+                timeScale: {
+                    visible: false,
+                },
+                handleScroll: false,
+                handleScale: false,
+            });
+
+            equitySeries = equityChart.addSeries(LightweightCharts.AreaSeries, {
+                lineColor: '#26a69a',
+                topColor: 'rgba(38, 166, 154, 0.4)',
+                bottomColor: 'rgba(38, 166, 154, 0.0)',
+                lineWidth: 2,
+                priceScaleId: 'left',
+            });
+
+            // Initialize with starting equity
+            equityData = [];
+        }
+
+        // Update equity chart with new data point
+        function updateEquityChart(time, equityValue) {
+            if (!equitySeries) return;
+
+            // Add new data point
+            equityData.push({ time: time, value: equityValue });
+
+            // Update series color based on profit/loss
+            const isProfit = equityValue >= initialCapital;
+            equitySeries.applyOptions({
+                lineColor: isProfit ? '#26a69a' : '#ef5350',
+                topColor: isProfit ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)',
+                bottomColor: isProfit ? 'rgba(38, 166, 154, 0.0)' : 'rgba(239, 83, 80, 0.0)',
+            });
+
+            // Update chart data
+            equitySeries.setData(equityData);
+        }
+
         // Update markers on chart (V5 API)
         function updateMarkers() {
             // Markers disabled due to API incompatibility - check Trade Log panel
@@ -535,8 +728,12 @@
                 trades = [];
                 markers = [];
 
-                // Initialize chart
+                // Initialize charts
                 initChart();
+                initEquityChart();
+
+                // Add initial equity point
+                equityData = [{ time: 0, value: initialCapital }];
 
                 // Update UI
                 totalBarsEl.textContent = candles.length;
@@ -545,7 +742,11 @@
                 updateEquityDisplay();
                 updatePositionDisplay();
                 updateStatsDisplay();
-                document.getElementById('tradeLog').innerHTML = '<p style="color: #787b86;">Ready to play...</p>';
+                // Reset trade table (keep structure, clear rows)
+                const tradeTableBody = document.getElementById('tradeTableBody');
+                if (tradeTableBody) tradeTableBody.innerHTML = '';
+                const noTradesMsg = document.getElementById('noTradesMsg');
+                if (noTradesMsg) noTradesMsg.style.display = 'block';
 
                 // Enable controls
                 playBtn.disabled = false;
@@ -625,8 +826,29 @@
             progressFill.style.width = '0%';
             updateEquityDisplay();
             updatePositionDisplay();
-            updateStatsDisplay();
-            document.getElementById('tradeLog').innerHTML = '<p style="color: #787b86;">Ready to play...</p>';
+
+            // Reset stats display
+            document.getElementById('totalTrades').textContent = '0';
+            document.getElementById('winRate').textContent = '-';
+            document.getElementById('totalPnl').textContent = '$0.00';
+            document.getElementById('maxDrawdown').textContent = '-';
+            document.getElementById('bestTrade').textContent = '-';
+            document.getElementById('worstTrade').textContent = '-';
+            document.getElementById('avgWin').textContent = '-';
+            document.getElementById('avgLoss').textContent = '-';
+            document.getElementById('profitFactor').textContent = '-';
+            document.getElementById('winStreak').textContent = '-';
+            document.getElementById('winPortion').style.width = '0%';
+
+            // Reset trade table
+            const tradeTableBody = document.getElementById('tradeTableBody');
+            if (tradeTableBody) tradeTableBody.innerHTML = '';
+            const noTradesMsg = document.getElementById('noTradesMsg');
+            if (noTradesMsg) noTradesMsg.style.display = 'block';
+
+            // Reset equity chart
+            equityData = [{ time: 0, value: initialCapital }];
+            if (equitySeries) equitySeries.setData(equityData);
         }
 
         // Process AI decision
@@ -658,7 +880,7 @@
                     });
                     updateMarkers();
 
-                    addTradeLog('🟢 LONG @ $' + (price ? price.toFixed(4) : 'N/A'), decision.reasoning);
+                    // Entry will show in table when trade closes
                     updatePositionDisplay();
 
                 } else if (action === 'SELL' && !position) {
@@ -681,7 +903,7 @@
                     });
                     updateMarkers();
 
-                    addTradeLog('🔴 SHORT @ $' + price.toFixed(4), decision.reasoning);
+                    // Entry will show in table when trade closes
                     updatePositionDisplay();
 
                 } else if ((action === 'CLOSE' || action === 'SELL' || action === 'BUY') && position) {
@@ -697,6 +919,9 @@
 
                     equity += pnlDollar;
 
+                    // Update equity curve chart
+                    updateEquityChart(trades.length + 1, equity);
+
                     const isProfit = pnlDollar > 0;
                     markers.push({
                         time: candle.time,
@@ -709,15 +934,14 @@
 
                     trades.push({
                         side: position.side,
+                        entryPrice: position.entryPrice,
+                        exitPrice: price,
                         pnl: leveragedPnlPct,
                         pnlDollar: pnlDollar
                     });
 
-                    addTradeLog(
-                        (isProfit ? '✅' : '❌') + ' CLOSE ' + position.side +
-                        ' | ' + (isProfit ? '+' : '') + leveragedPnlPct.toFixed(2) + '%',
-                        '$' + pnlDollar.toFixed(2)
-                    );
+                    // Add to trade log table
+                    addTradeLog(trades[trades.length - 1]);
 
                     position = null;
                     updateEquityDisplay();
@@ -778,30 +1002,96 @@
             document.getElementById('totalTrades').textContent = trades.length;
 
             if (trades.length > 0) {
-                const wins = trades.filter(t => t.pnl > 0).length;
-                document.getElementById('winRate').textContent = (wins / trades.length * 100).toFixed(1) + '%';
+                // Basic stats
+                const wins = trades.filter(t => t.pnl > 0);
+                const losses = trades.filter(t => t.pnl <= 0);
+                const winCount = wins.length;
+                const lossCount = losses.length;
 
+                // Win Rate
+                const winRate = (winCount / trades.length * 100).toFixed(1);
+                document.getElementById('winRate').textContent = winRate + '%';
+
+                // Total PnL
                 const totalPnl = trades.reduce((sum, t) => sum + t.pnlDollar, 0);
                 const pnlEl = document.getElementById('totalPnl');
                 pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
                 pnlEl.className = 'position-value ' + (totalPnl >= 0 ? 'profit' : 'loss');
+
+                // Best/Worst Trade
+                const pnlValues = trades.map(t => t.pnl);
+                const bestPnl = Math.max(...pnlValues);
+                const worstPnl = Math.min(...pnlValues);
+                document.getElementById('bestTrade').textContent = '+' + bestPnl.toFixed(2) + '%';
+                document.getElementById('worstTrade').textContent = worstPnl.toFixed(2) + '%';
+
+                // Avg Win/Loss
+                const avgWin = winCount > 0 ? wins.reduce((sum, t) => sum + t.pnl, 0) / winCount : 0;
+                const avgLoss = lossCount > 0 ? losses.reduce((sum, t) => sum + t.pnl, 0) / lossCount : 0;
+                document.getElementById('avgWin').textContent = '+' + avgWin.toFixed(2) + '%';
+                document.getElementById('avgLoss').textContent = avgLoss.toFixed(2) + '%';
+
+                // Profit Factor
+                const grossProfit = wins.reduce((sum, t) => sum + t.pnlDollar, 0);
+                const grossLoss = Math.abs(losses.reduce((sum, t) => sum + t.pnlDollar, 0));
+                const profitFactor = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : '-';
+                document.getElementById('profitFactor').textContent = profitFactor;
+
+                // Max Drawdown (simple calculation from equity curve)
+                let peak = initialCapital;
+                let maxDD = 0;
+                let runningEquity = initialCapital;
+                trades.forEach(t => {
+                    runningEquity += t.pnlDollar;
+                    if (runningEquity > peak) peak = runningEquity;
+                    const dd = (peak - runningEquity) / peak * 100;
+                    if (dd > maxDD) maxDD = dd;
+                });
+                document.getElementById('maxDrawdown').textContent = '-' + maxDD.toFixed(2) + '%';
+
+                // Win Streak
+                let maxStreak = 0;
+                let currentStreak = 0;
+                trades.forEach(t => {
+                    if (t.pnl > 0) {
+                        currentStreak++;
+                        if (currentStreak > maxStreak) maxStreak = currentStreak;
+                    } else {
+                        currentStreak = 0;
+                    }
+                });
+                document.getElementById('winStreak').textContent = maxStreak;
+
+                // Win/Loss Bar
+                const winPortion = (winCount / trades.length * 100).toFixed(1);
+                document.getElementById('winPortion').style.width = winPortion + '%';
             }
         }
 
-        // Add trade log entry
-        function addTradeLog(message, detail) {
-            const el = document.getElementById('tradeLog');
-            if (el.querySelector('p')) {
-                el.innerHTML = '';
-            }
+        // Add trade log entry (table row)
+        function addTradeLog(trade) {
+            const noTradesMsg = document.getElementById('noTradesMsg');
+            if (noTradesMsg) noTradesMsg.style.display = 'none';
 
-            const entry = document.createElement('div');
-            entry.className = 'trade-entry';
-            entry.innerHTML = `
-                <div>${message}</div>
-                <div class="trade-time">${detail || ''}</div>
+            const tbody = document.getElementById('tradeTableBody');
+            if (!tbody) {
+                console.warn('Trade table not ready');
+                return;
+            }
+            const row = document.createElement('tr');
+
+            const isProfit = trade.pnlDollar > 0;
+            const sideClass = trade.side === 'LONG' ? 'side-long' : 'side-short';
+            const pnlClass = isProfit ? 'pnl-positive' : 'pnl-negative';
+
+            row.innerHTML = `
+                <td class="${sideClass}">${trade.side}</td>
+                <td>$${trade.entryPrice.toFixed(4)}</td>
+                <td>$${trade.exitPrice.toFixed(4)}</td>
+                <td class="${pnlClass}">${isProfit ? '+' : ''}${trade.pnl.toFixed(2)}%</td>
+                <td class="${pnlClass}">${isProfit ? '+' : ''}$${trade.pnlDollar.toFixed(2)}</td>
             `;
-            el.insertBefore(entry, el.firstChild);
+            tbody.insertBefore(row, tbody.firstChild);
         }
 
         // Event listeners
