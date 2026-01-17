@@ -8,7 +8,8 @@ from datetime import datetime
 from typing import Optional
 import pandas as pd
 
-from backend.data.fetcher import BinanceFetcher
+from backend.data.fetcher import DataService
+from backend.database.connection import async_session_factory
 from backend.replay.engine import ReplayEngine
 from backend.replay.agent import SimpleOrderFlowAgent, MomentumAgent
 
@@ -64,32 +65,21 @@ async def run_replay(request: ReplayRequest):
         start_dt = datetime.strptime(request.start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(request.end_date, "%Y-%m-%d")
         
-        # Fetch historical data
-        fetcher = BinanceFetcher()
-        try:
-            ohlcv_data = await fetcher.fetch_ohlcv(
-                symbol=request.symbol,
-                timeframe=request.timeframe,
-                start_time=start_dt,
-                end_time=end_dt,
-            )
-        finally:
-            await fetcher.close()
+        # Fetch historical data with caching (PostgreSQL)
+        async with async_session_factory() as db:
+            service = DataService(db)
+            try:
+                data = await service.get_data(
+                    symbol=request.symbol,
+                    timeframe=request.timeframe,
+                    start_time=start_dt,
+                    end_time=end_dt,
+                )
+            finally:
+                await service.close()
         
-        if not ohlcv_data:
+        if data.empty:
             raise HTTPException(status_code=400, detail="No data fetched")
-        
-        # Convert to DataFrame
-        data = pd.DataFrame(ohlcv_data)
-        data['timestamp'] = pd.to_datetime(data['timestamp'])
-        data = data.set_index('timestamp')
-        data = data.rename(columns={
-            'open': 'Open',
-            'high': 'High',
-            'low': 'Low',
-            'close': 'Close',
-            'volume': 'Volume'
-        })
         
         # Create agent
         if request.agent_type == "orderflow":
