@@ -367,52 +367,66 @@
         </header>
 
         <!-- Configuration -->
-        <div class="config-bar">
-            <div class="config-group">
-                <label>Symbol</label>
-                <select id="symbol">
-                    <option value="XRPUSDT" selected>XRPUSDT</option>
-                    <option value="BTCUSDT">BTCUSDT</option>
-                    <option value="ETHUSDT">ETHUSDT</option>
-                    <option value="SOLUSDT">SOLUSDT</option>
-                </select>
+        <div class="config-bar" style="flex-wrap: wrap; gap: 10px;">
+            <!-- Row 1: Data Settings -->
+            <div
+                style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; width: 100%; padding-bottom: 10px; border-bottom: 1px solid #2a2e39;">
+                <span style="color: #787b86; font-size: 11px; text-transform: uppercase;">📊 Data</span>
+                <div class="config-group">
+                    <label>Symbol</label>
+                    <select id="symbol">
+                        <option value="XRPUSDT" selected>XRPUSDT</option>
+                        <option value="BTCUSDT">BTCUSDT</option>
+                        <option value="ETHUSDT">ETHUSDT</option>
+                        <option value="SOLUSDT">SOLUSDT</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label>Timeframe</label>
+                    <select id="timeframe">
+                        <option value="1m">1m</option>
+                        <option value="5m" selected>5m</option>
+                        <option value="15m">15m</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label>Start</label>
+                    <input type="date" id="startDate" value="2025-12-01">
+                </div>
+                <div class="config-group">
+                    <label>End</label>
+                    <input type="date" id="endDate" value="2025-12-02">
+                </div>
             </div>
-            <div class="config-group">
-                <label>Timeframe</label>
-                <select id="timeframe">
-                    <option value="1m">1m</option>
-                    <option value="5m" selected>5m</option>
-                    <option value="15m">15m</option>
-                </select>
+
+            <!-- Row 2: Trading Settings -->
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <span style="color: #787b86; font-size: 11px; text-transform: uppercase;">💰 Trading</span>
+                <div class="config-group">
+                    <label>Capital</label>
+                    <input type="number" id="capital" value="100" min="10" style="width: 70px;">
+                </div>
+                <div class="config-group">
+                    <label>Leverage</label>
+                    <select id="leverage" style="width: 75px;">
+                        <option value="1">1x</option>
+                        <option value="5">5x</option>
+                        <option value="10">10x</option>
+                        <option value="20" selected>20x</option>
+                        <option value="50">50x</option>
+                        <option value="100">100x</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label>Position $</label>
+                    <input type="number" id="positionSize" value="2" min="0.1" step="0.1" style="width: 60px;">
+                </div>
+                <div class="config-group">
+                    <label>Fee %</label>
+                    <input type="number" id="tradingFee" value="0.1" min="0" step="0.01" style="width: 75px;">
+                </div>
+                <button class="control-btn primary" id="loadBtn">📊 Load Data</button>
             </div>
-            <div class="config-group">
-                <label>Start</label>
-                <input type="date" id="startDate" value="2025-12-01">
-            </div>
-            <div class="config-group">
-                <label>End</label>
-                <input type="date" id="endDate" value="2025-12-02">
-            </div>
-            <div class="config-group">
-                <label>Capital</label>
-                <input type="number" id="capital" value="100" min="10" style="width: 70px;">
-            </div>
-            <div class="config-group">
-                <label>Leverage</label>
-                <select id="leverage" style="width: 60px;">
-                    <option value="1">1x</option>
-                    <option value="5">5x</option>
-                    <option value="10">10x</option>
-                    <option value="20" selected>20x</option>
-                    <option value="50">50x</option>
-                    <option value="100">100x</option>
-                </select>
-            </div>
-            <div class="config-group">
-                <label>Position $</label>
-                <input type="number" id="positionSize" value="2" min="0.1" step="0.1" style="width: 60px;">
-            </div>
-            <button class="control-btn primary" id="loadBtn">📊 Load Data</button>
         </div>
 
         <!-- Playback Controls -->
@@ -522,6 +536,7 @@
                                 <th>Exit</th>
                                 <th>PnL %</th>
                                 <th>PnL $</th>
+                                <th>Fee</th>
                             </tr>
                         </thead>
                         <tbody id="tradeTableBody">
@@ -554,6 +569,7 @@
         let equitySeries = null;      // Equity line series
         let equityData = [];          // Equity curve data points
         let tradeSize = 2;             // Position size per trade ($)
+        let tradingFeeRate = 0.001;    // Trading fee rate (0.1%)
 
         // DOM Elements
         const loadBtn = document.getElementById('loadBtn');
@@ -573,7 +589,8 @@
                 endDate: document.getElementById('endDate').value,
                 capital: document.getElementById('capital').value,
                 leverage: document.getElementById('leverage').value,
-                positionSize: document.getElementById('positionSize').value
+                positionSize: document.getElementById('positionSize').value,
+                tradingFee: document.getElementById('tradingFee').value
             };
             localStorage.setItem('tradingSettings', JSON.stringify(settings));
         }
@@ -591,6 +608,7 @@
                     if (settings.capital) document.getElementById('capital').value = settings.capital;
                     if (settings.leverage) document.getElementById('leverage').value = settings.leverage;
                     if (settings.positionSize) document.getElementById('positionSize').value = settings.positionSize;
+                    if (settings.tradingFee) document.getElementById('tradingFee').value = settings.tradingFee;
                 } catch (e) {
                     console.warn('Could not load settings:', e);
                 }
@@ -762,6 +780,7 @@
                 initialCapital = parseFloat(document.getElementById('capital').value);
                 currentLeverage = parseFloat(document.getElementById('leverage').value);
                 tradeSize = parseFloat(document.getElementById('positionSize').value) || 2;
+                tradingFeeRate = (parseFloat(document.getElementById('tradingFee').value) || 0.1) / 100;  // Convert % to decimal
                 equity = initialCapital;
 
                 // Save settings to localStorage
@@ -904,6 +923,12 @@
 
                 console.log('[TRADE] Processing:', action, 'at price', price);
 
+                // Check if busted (no more capital)
+                if (equity <= 0) {
+                    console.warn('[TRADE] No capital remaining, stopping trades');
+                    return;
+                }
+
                 if (action === 'BUY' && !position) {
                     // Open long position
                     position = {
@@ -960,10 +985,18 @@
 
                     // Leveraged PnL Dollar and Percent
                     // tradeSize is actual margin per trade, leverage is multiplier
-                    const pnlDollar = (rawPnlPct / 100) * position.size * tradeSize;
+                    const positionValue = tradeSize * position.size;  // Total position value
+                    const fee = positionValue * tradingFeeRate * 2;   // entry + exit fee
+                    const grossPnl = (rawPnlPct / 100) * positionValue;
+                    const pnlDollar = grossPnl - fee;                 // Net PnL after fees
                     const leveragedPnlPct = rawPnlPct * position.size;   // Display %
 
                     equity += pnlDollar;
+
+                    // Check for liquidation
+                    if (equity <= 0) {
+                        console.warn('[TRADE] LIQUIDATED! Equity:', equity.toFixed(2));
+                    }
 
                     // Update equity curve chart
                     updateEquityChart(trades.length + 1, equity);
@@ -983,7 +1016,8 @@
                         entryPrice: position.entryPrice,
                         exitPrice: price,
                         pnl: leveragedPnlPct,
-                        pnlDollar: pnlDollar
+                        pnlDollar: pnlDollar,
+                        fee: fee
                     });
 
                     // Add to trade log table
@@ -1136,6 +1170,7 @@
                 <td>$${trade.exitPrice.toFixed(4)}</td>
                 <td class="${pnlClass}">${isProfit ? '+' : ''}${trade.pnl.toFixed(2)}%</td>
                 <td class="${pnlClass}">${isProfit ? '+' : ''}$${trade.pnlDollar.toFixed(2)}</td>
+                <td>$${trade.fee.toFixed(2)}</td>
             `;
             tbody.insertBefore(row, tbody.firstChild);
         }
