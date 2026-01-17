@@ -4,26 +4,55 @@
 
 ## Architecture Overview
 
-This is a **crypto trading backtesting platform** with ML-powered replay simulation. The system follows a clear separation:
+This is a **crypto trading backtesting platform** with ML-powered replay simulation:
 
 ```
 Frontend (Vanilla JS) → FastAPI Backend → PostgreSQL/Redis
                               ↓
                     ReplayEngine (bar-by-bar simulation)
                               ↓
-                    TradingAgents (ML/OrderFlow/Momentum)
+                    MLTradingAgent (XGBoost predictions)
 ```
 
 ### Core Data Flow
 1. **Data Fetching**: `BinanceFetcher` pulls OHLCV via ccxt → cached in PostgreSQL
 2. **Replay Simulation**: `ReplayEngine` processes bars sequentially, ensuring agents see only historical data (no look-ahead bias)
-3. **Trading Decisions**: Agents return `Decision.BUY/SELL/HOLD/CLOSE` with reasoning
+3. **Trading Decisions**: ML agent returns `Decision.BUY/SELL/HOLD/CLOSE` with reasoning
 4. **ML Predictions**: XGBoost model trained on technical features predicts price direction
+
+## Training the ML Model
+
+### Via UI
+Click the **🧠 Train Model** button in the frontend. It trains on the selected symbol with default settings.
+
+### Via API (with custom arguments)
+```bash
+curl -X POST http://localhost:8000/api/replay/train \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "BTCUSDT",
+    "timeframe": "5m",
+    "days": 90,
+    "lookahead": 5,
+    "threshold": 0.002
+  }'
+```
+
+### Training Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `symbol` | XRPUSDT | Trading pair to train on |
+| `timeframe` | 5m | Candle timeframe (1m, 5m, 15m, 1h) |
+| `days` | 90 | Days of historical data to use |
+| `lookahead` | 5 | Bars to look ahead for label creation |
+| `threshold` | 0.002 | Min price change (0.2%) to label as UP/DOWN |
+
+Model saved to `models/trading_model.pkl`
 
 ## Key Patterns
 
 ### Agent Interface Pattern
-All trading agents must inherit from `TradingAgent` ([backend/replay/agent.py](backend/replay/agent.py)):
+Trading agents inherit from `TradingAgent` ([backend/replay/agent.py](backend/replay/agent.py)):
 ```python
 class TradingAgent(ABC):
     @abstractmethod
@@ -31,16 +60,10 @@ class TradingAgent(ABC):
         """data contains ONLY historical bars up to current - no future data"""
 ```
 
-### Strategy Pattern (for backtesting.py integration)
-Strategies extend `BaseStrategy` ([backend/strategies/base.py](backend/strategies/base.py)) which wraps `backtesting.Strategy`:
-- `init()`: Define indicators using `self.I()`
-- `next()`: Trading logic per bar
-- `get_parameters()`: Return optimizable params with min/max
-
 ### Feature Engineering
 `FeatureEngineer` ([backend/ml/features.py](backend/ml/features.py)) creates standardized ML features:
 - Column names auto-capitalized: `df['Close']` not `df['close']`
-- Minimum 60 bars needed for full feature set (EMAs, RSI, MACD)
+- Minimum 60 bars needed for full feature set (EMAs, RSI, MACD, Bollinger Bands)
 
 ## Development Commands
 
@@ -52,41 +75,15 @@ docker compose up
 docker compose logs -f app
 
 # Access app: http://localhost:8000
-# PostgreSQL: localhost:5432 (backtest/backtest)
-# Redis: localhost:6379
 ```
-
-### Training ML Model
-```bash
-# Via API (fetches 90 days of data, trains XGBoost)
-curl -X POST http://localhost:8000/api/replay/train \
-  -H "Content-Type: application/json" \
-  -d '{"symbol": "XRPUSDT", "days": 90}'
-```
-Model saved to `models/trading_model.pkl`
 
 ## API Structure
 
-Routes mounted at `/api` prefix ([backend/config.py](backend/config.py)):
+Routes mounted at `/api` prefix:
 - `/api/data/*` - Data fetching/caching
-- `/api/backtest/*` - Strategy backtesting
-- `/api/replay/*` - ML replay simulation
-
-Request/response schemas in [backend/api/schemas.py](backend/api/schemas.py) use Pydantic v2.
-
-## Database Models
-
-All models in [backend/database/models.py](backend/database/models.py):
-- `Symbol` - Trading pairs (BTCUSDT, etc.)
-- `OHLCVData` - Cached candle data with unique constraint on (symbol, timeframe, timestamp)
-- `DataRange` - Tracks fetched ranges for gap detection
-- `BacktestRun/BacktestTrade` - Historical backtest results
-
-Use async SQLAlchemy sessions:
-```python
-async with async_session_factory() as db:
-    # Use db session
-```
+- `/api/backtest/*` - Strategy backtesting  
+- `/api/replay/run` - Run ML replay simulation
+- `/api/replay/train` - Train ML model
 
 ## Important Conventions
 
@@ -100,11 +97,5 @@ async with async_session_factory() as db:
 
 Single-page app in [frontend/index.html](frontend/index.html):
 - Uses Lightweight Charts library for TradingView-style charts
-- Served as static files via FastAPI `StaticFiles` mount
-- Communicates with backend via fetch to `/api/*` endpoints
-
-## Adding New Agents
-
-1. Create class inheriting `TradingAgent` in `backend/replay/` or `backend/ml/`
-2. Implement `analyze(data, order_flow) → Decision`
-3. Register in [backend/api/routes/replay.py](backend/api/routes/replay.py) `run_replay()` function
+- **🧠 Train Model** button - trains XGBoost on selected symbol
+- **📊 Load Data** button - runs replay simulation

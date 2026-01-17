@@ -425,6 +425,7 @@
                     <label>Fee %</label>
                     <input type="number" id="tradingFee" value="0.1" min="0" step="0.01" style="width: 75px;">
                 </div>
+                <button class="control-btn" id="trainBtn" style="background: #ff9800;">🧠 Train Model</button>
                 <button class="control-btn primary" id="loadBtn">📊 Load Data</button>
             </div>
         </div>
@@ -573,6 +574,7 @@
 
         // DOM Elements
         const loadBtn = document.getElementById('loadBtn');
+        const trainBtn = document.getElementById('trainBtn');
         const playBtn = document.getElementById('playBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const resetBtn = document.getElementById('resetBtn');
@@ -752,7 +754,6 @@
                 timeframe: document.getElementById('timeframe').value,
                 start_date: document.getElementById('startDate').value,
                 end_date: document.getElementById('endDate').value,
-                agent_type: 'ml',
                 initial_capital: parseFloat(document.getElementById('capital').value),
                 position_size: parseFloat(document.getElementById('leverage').value),
                 speed: 0
@@ -1175,8 +1176,46 @@
             tbody.insertBefore(row, tbody.firstChild);
         }
 
+        // Train ML Model
+        async function trainModel() {
+            trainBtn.disabled = true;
+            trainBtn.textContent = '⏳ Training...';
+
+            const symbol = document.getElementById('symbol').value;
+
+            try {
+                const response = await fetch('/api/replay/train', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol: symbol,
+                        timeframe: '5m',
+                        days: 90
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const acc = (data.metrics.accuracy * 100).toFixed(1);
+                    alert(`✅ Model trained successfully!\n\nSymbol: ${symbol}\nSamples: ${data.samples}\nAccuracy: ${acc}%`);
+                    trainBtn.textContent = '✅ Trained';
+                    trainBtn.style.background = '#26a69a';
+                } else {
+                    throw new Error(data.detail || 'Training failed');
+                }
+            } catch (error) {
+                alert('❌ Training failed: ' + error.message);
+                trainBtn.textContent = '🧠 Train Model';
+                trainBtn.style.background = '#ff9800';
+            } finally {
+                trainBtn.disabled = false;
+            }
+        }
+
         // Event listeners
         loadBtn.addEventListener('click', loadData);
+        trainBtn.addEventListener('click', trainModel);
         playBtn.addEventListener('click', play);
         pauseBtn.addEventListener('click', pause);
         resetBtn.addEventListener('click', reset);

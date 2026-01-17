@@ -11,9 +11,8 @@ import pandas as pd
 from backend.data.fetcher import DataService
 from backend.database.connection import async_session_factory
 from backend.replay.engine import ReplayEngine
-from backend.replay.agent import SimpleOrderFlowAgent, MomentumAgent
 
-# Try to import ML agents
+# Import ML agents
 try:
     from backend.ml.agent import MLTradingAgent
     from backend.ml.fast_agent import FastMLAgent
@@ -31,7 +30,6 @@ class ReplayRequest(BaseModel):
     timeframe: str = "5m"
     start_date: str
     end_date: str
-    agent_type: str = "orderflow"  # "orderflow" or "momentum"
     initial_capital: float = 100.0
     position_size: float = 20.0
     speed: float = 0  # 0 = instant, > 0 = bars per second
@@ -81,22 +79,16 @@ async def run_replay(request: ReplayRequest):
         if data.empty:
             raise HTTPException(status_code=400, detail="No data fetched")
         
-        # Create agent
-        if request.agent_type == "orderflow":
-            agent = SimpleOrderFlowAgent()
-        elif request.agent_type == "momentum":
-            agent = MomentumAgent()
-        elif request.agent_type == "ml":
-            if not HAS_ML_AGENT:
-                raise HTTPException(status_code=400, detail="ML agent not available")
-            # Use FastMLAgent for instant replay
-            agent = FastMLAgent()
-            if not agent.is_model_loaded:
-                raise HTTPException(status_code=400, detail="ML model not trained. Run /api/replay/train first")
-            # Pre-calculate ALL predictions (this is the key optimization!)
-            agent.prepare(data)
-        else:
-            raise HTTPException(status_code=400, detail=f"Unknown agent: {request.agent_type}")
+        # Create ML agent
+        if not HAS_ML_AGENT:
+            raise HTTPException(status_code=400, detail="ML agent not available")
+        
+        agent = FastMLAgent()
+        if not agent.is_model_loaded:
+            raise HTTPException(status_code=400, detail="ML model not trained. Click '🧠 Train Model' first")
+        
+        # Pre-calculate ALL predictions (this is the key optimization!)
+        agent.prepare(data)
         
         # Create replay engine
         engine = ReplayEngine(
@@ -137,32 +129,6 @@ async def run_replay(request: ReplayRequest):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/agents")
-async def list_agents():
-    """List available trading agents."""
-    agents = [
-        {
-            "id": "orderflow",
-            "name": "Order Flow Agent",
-            "description": "Uses volume delta and CVD for decisions",
-        },
-        {
-            "id": "momentum",
-            "name": "Momentum Agent", 
-            "description": "Uses price momentum for decisions",
-        },
-    ]
-    
-    if HAS_ML_AGENT:
-        agents.append({
-            "id": "ml",
-            "name": "ML Agent (XGBoost)",
-            "description": "Machine learning model trained on historical data",
-        })
-    
-    return {"agents": agents}
 
 
 class TrainRequest(BaseModel):
