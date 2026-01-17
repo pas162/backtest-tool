@@ -118,18 +118,18 @@ class FastMLAgent(TradingAgent):
         prob = self._all_predictions[bar_position]
         prob_up = prob[1]
         
-        # Make decision
+        # Make decision (Futures Logic: Long & Short)
         if prob_up >= self.buy_threshold:
             if self._position != "long":
-                self._last_reasoning = f"ML BUY: prob_up={prob_up:.2f}"
+                self._last_reasoning = f"ML BUY (Long): prob_up={prob_up:.2f}"
                 self._position = "long"
                 return Decision.BUY
         
         elif prob_up <= self.sell_threshold:
-            if self._position == "long":
-                self._last_reasoning = f"ML CLOSE: prob_up={prob_up:.2f}"
-                self._position = None
-                return Decision.CLOSE
+            if self._position != "short":
+                self._last_reasoning = f"ML SELL (Short): prob_up={prob_up:.2f}"
+                self._position = "short"
+                return Decision.SELL
         
         self._last_reasoning = f"HOLD: prob_up={prob_up:.2f}"
         return Decision.HOLD

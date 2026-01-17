@@ -79,17 +79,32 @@ class MLStrategy(BaseStrategy):
             prob_up = prob[1]  # Probability price goes up
             
             # Trading logic
-            if prob_up >= self.buy_threshold and not self.position:
-                # BUY signal
-                sl = self.data.Close[-1] * (1 - self.stop_loss_pct / 100)
-                tp = self.data.Close[-1] * (1 + self.take_profit_pct / 100)
-                self.buy(sl=sl, tp=tp)
-                self._last_signal = "BUY"
+            # Trading logic (Futures: Bi-directional)
+            if prob_up >= self.buy_threshold:
+                # BUY signal (Long)
+                # If currently Short, close it first
+                if self.position and self.position.is_short:
+                    self.position.close()
                 
-            elif prob_up <= self.sell_threshold and self.position:
-                # CLOSE position
-                self.position.close()
-                self._last_signal = "CLOSE"
+                # If no position (or closed), open Long
+                if not self.position:
+                    sl = self.data.Close[-1] * (1 - self.stop_loss_pct / 100)
+                    tp = self.data.Close[-1] * (1 + self.take_profit_pct / 100)
+                    self.buy(sl=sl, tp=tp)
+                    self._last_signal = "BUY"
+                
+            elif prob_up <= self.sell_threshold:
+                # SELL signal (Short)
+                # If currently Long, close it first
+                if self.position and self.position.is_long:
+                    self.position.close()
+                
+                # If no position (or closed), open Short
+                if not self.position:
+                    sl = self.data.Close[-1] * (1 + self.stop_loss_pct / 100)
+                    tp = self.data.Close[-1] * (1 - self.take_profit_pct / 100)
+                    self.sell(sl=sl, tp=tp)
+                    self._last_signal = "SELL"
                 
         except Exception as e:
             # Silently skip on errors

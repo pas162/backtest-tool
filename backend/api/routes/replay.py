@@ -32,7 +32,7 @@ class ReplayRequest(BaseModel):
     end_date: str
     agent_type: str = "orderflow"  # "orderflow" or "momentum"
     initial_capital: float = 100.0
-    position_size: float = 10.0
+    position_size: float = 20.0
     speed: float = 0  # 0 = instant, > 0 = bars per second
 
 
@@ -117,6 +117,7 @@ async def run_replay(request: ReplayRequest):
         )
         
         # Run simulation
+        print(f"Starting Replay with Position Size (Leverage): {request.position_size}x")
         results = await engine.run(speed=request.speed)
         
         # Format candles for Lightweight Charts (time as Unix timestamp)

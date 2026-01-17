@@ -315,7 +315,18 @@
             </div>
             <div class="config-group">
                 <label>Capital</label>
-                <input type="number" id="capital" value="100" min="10" style="width: 80px;">
+                <input type="number" id="capital" value="100" min="10" style="width: 70px;">
+            </div>
+            <div class="config-group">
+                <label>Leverage</label>
+                <select id="leverage" style="width: 60px;">
+                    <option value="1">1x</option>
+                    <option value="5">5x</option>
+                    <option value="10">10x</option>
+                    <option value="20" selected>20x</option>
+                    <option value="50">50x</option>
+                    <option value="100">100x</option>
+                </select>
             </div>
             <button class="control-btn primary" id="loadBtn">📊 Load Data</button>
         </div>
@@ -476,17 +487,7 @@
 
         // Update markers on chart (V5 API)
         function updateMarkers() {
-            try {
-                // Sort markers by time (required by Lightweight Charts)
-                const sortedMarkers = [...markers].sort((a, b) => a.time - b.time);
-                console.log('[MARKERS] Setting', sortedMarkers.length, 'markers');
-
-                // Use setMarkers which is available in both V4 and V5
-                candleSeries.setMarkers(sortedMarkers);
-            } catch (err) {
-                // V5 API doesn't support setMarkers - visual markers disabled
-                // Trades still work correctly, just no arrows on chart
-            }
+            // Markers disabled due to API incompatibility - check Trade Log panel
         }
 
         // Load data
@@ -494,20 +495,25 @@
             loadBtn.disabled = true;
             loadBtn.textContent = '⏳ Loading...';
 
+            const payload = {
+                symbol: document.getElementById('symbol').value,
+                timeframe: document.getElementById('timeframe').value,
+                start_date: document.getElementById('startDate').value,
+                end_date: document.getElementById('endDate').value,
+                agent_type: 'ml',
+                initial_capital: parseFloat(document.getElementById('capital').value),
+                position_size: parseFloat(document.getElementById('leverage').value),
+                speed: 0
+            };
+
+            console.log('Sending Replay Request:', payload);
+            console.log('Selected Leverage:', document.getElementById('leverage').value);
+
             try {
                 const response = await fetch('/api/replay/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        symbol: document.getElementById('symbol').value,
-                        timeframe: document.getElementById('timeframe').value,
-                        start_date: document.getElementById('startDate').value,
-                        end_date: document.getElementById('endDate').value,
-                        agent_type: 'ml',
-                        initial_capital: parseFloat(document.getElementById('capital').value),
-                        position_size: 10,
-                        speed: 0
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();
@@ -520,6 +526,7 @@
                 candles = data.candles || [];
                 decisions = data.decision_log || [];
                 initialCapital = parseFloat(document.getElementById('capital').value);
+                currentLeverage = parseFloat(document.getElementById('leverage').value);
                 equity = initialCapital;
 
                 // Reset state
@@ -636,7 +643,9 @@
                         side: 'LONG',
                         entryPrice: price,
                         entryTime: new Date(decision.time),
-                        size: 10
+                        entryPrice: price,
+                        entryTime: new Date(decision.time),
+                        size: currentLeverage
                     };
 
                     // Add marker
@@ -658,7 +667,9 @@
                         side: 'SHORT',
                         entryPrice: price,
                         entryTime: new Date(decision.time),
-                        size: 10
+                        entryPrice: price,
+                        entryTime: new Date(decision.time),
+                        size: currentLeverage
                     };
 
                     markers.push({
@@ -675,32 +686,36 @@
 
                 } else if ((action === 'CLOSE' || action === 'SELL' || action === 'BUY') && position) {
                     // Close position
-                    const pnl = position.side === 'LONG'
+                    // Raw Price Change %
+                    const rawPnlPct = position.side === 'LONG'
                         ? (price - position.entryPrice) / position.entryPrice * 100
                         : (position.entryPrice - price) / position.entryPrice * 100;
 
-                    const pnlDollar = (pnl / 100) * position.size;
+                    // Leveraged PnL Dollar and Percent
+                    const pnlDollar = (rawPnlPct / 100) * position.size; // Scaled by Size (Leverage on 100 base)
+                    const leveragedPnlPct = rawPnlPct * position.size;   // Display %
+
                     equity += pnlDollar;
 
-                    const isProfit = pnl > 0;
+                    const isProfit = pnlDollar > 0;
                     markers.push({
                         time: candle.time,
                         position: position.side === 'LONG' ? 'aboveBar' : 'belowBar',
                         color: isProfit ? '#26a69a' : '#ef5350',
                         shape: position.side === 'LONG' ? 'arrowDown' : 'arrowUp',
-                        text: (isProfit ? '+' : '') + pnl.toFixed(1) + '%'
+                        text: (isProfit ? '+' : '') + leveragedPnlPct.toFixed(1) + '%'
                     });
                     updateMarkers();
 
                     trades.push({
                         side: position.side,
-                        pnl: pnl,
+                        pnl: leveragedPnlPct,
                         pnlDollar: pnlDollar
                     });
 
                     addTradeLog(
                         (isProfit ? '✅' : '❌') + ' CLOSE ' + position.side +
-                        ' | ' + (isProfit ? '+' : '') + pnl.toFixed(2) + '%',
+                        ' | ' + (isProfit ? '+' : '') + leveragedPnlPct.toFixed(2) + '%',
                         '$' + pnlDollar.toFixed(2)
                     );
 
