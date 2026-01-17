@@ -1,95 +1,63 @@
-# Multi-Strategy Backtesting Platform
+# AI Trading Replay 🚀
 
-A high-performance backtesting platform for crypto trading strategies with support for running multiple strategies in parallel.
+A real-time AI-powered trading replay simulator for Binance Futures. Watch machine learning models execute trades on historical data with adjustable leverage.
 
-## 🎯 Features
+## Features
 
-- Backtest trading strategies on Binance Futures data
-- Run multiple strategies simultaneously
-- Store data in PostgreSQL for reuse
-- Simple dashboard for visualizing results
-- Automatic data gap detection and filling
+- **ML Trading Agent**: XGBoost model predicts UP/DOWN trends
+- **Futures Trading**: Long & Short positions with 1x-100x leverage
+- **Real-time Animation**: Step-by-step candle replay with trade markers
+- **TradingView-style UI**: Professional candlestick charts using Lightweight Charts
 
-## 🚀 Quick Start
-
-### Prerequisites
-- **Docker Desktop** must be installed and running
-- Git
-
-### Installation
+## Quick Start
 
 ```bash
-# Clone repo
-git clone https://github.com/pas162/backtest-tool.git
-cd backtest-tool
+# Start with Docker
+docker compose up
 
-# Start with Docker (make sure Docker Desktop is running!)
-docker compose up -d
-
-# Open dashboard
-# http://localhost:8000
+# Open browser
+http://localhost:8000
 ```
 
-### Troubleshooting
+## Usage
 
-If you see this error:
-```
-unable to get image 'postgres:16-alpine': open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
-```
+1. Select **Symbol** (XRPUSDT, BTCUSDT, etc.)
+2. Set **Date Range**
+3. Choose **Leverage** (default 20x)
+4. Click **Load Data**
+5. Press **Play** and watch the AI trade!
 
-**Solution**: Open Docker Desktop from Start Menu and wait until it shows "Docker is running", then retry `docker compose up`.
+## Tech Stack
 
-## 📁 Project Structure
+- **Backend**: FastAPI, Python, XGBoost
+- **Frontend**: Vanilla JS, Lightweight Charts
+- **Database**: PostgreSQL, Redis
+- **Container**: Docker Compose
+
+## Project Structure
 
 ```
 backtest-tool/
-├── docs/
-│   ├── REQUIREMENTS.md      # Requirements table (source of truth)
-│   ├── IMPLEMENTATION.md    # Implementation plan
-│   └── TRACKING.md          # Progress tracking
 ├── backend/
-│   ├── database/            # PostgreSQL models & migrations
-│   ├── data/                # Data fetcher from Binance
-│   ├── strategies/          # Trading strategies
-│   ├── engine/              # Backtesting engine
-│   └── api/                 # FastAPI endpoints
-├── frontend/                # HTML + JS dashboard
-├── docker-compose.yml
-└── Dockerfile
+│   ├── api/          # FastAPI routes
+│   ├── ml/           # ML model & features
+│   ├── replay/       # Replay engine
+│   └── strategies/   # Trading strategies
+├── frontend/
+│   └── index.html    # Main UI
+├── models/           # Trained ML models
+└── docker-compose.yml
 ```
 
-## 📖 Documentation
+## Training the ML Model
 
-- [Requirements Table](docs/REQUIREMENTS.md) - Source of truth for all features
-- [Implementation Plan](docs/IMPLEMENTATION.md) - Technical details
-- [Progress Tracking](docs/TRACKING.md) - Task checklist
+```bash
+# Via API
+curl -X POST http://localhost:8000/api/replay/train \
+  -H "Content-Type: application/json" \
+  -d '{"symbol": "XRPUSDT", "days": 90}'
+```
 
-## 🔧 Tech Stack
-
-- **Backend**: Python 3.11, FastAPI, backtesting.py
-- **Database**: PostgreSQL 16, Redis
-- **Frontend**: HTML, Vanilla JS, Plotly.js
-- **Infrastructure**: Docker, Docker Compose
-
-## 📊 API Endpoints
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| GET | `/api/symbols` | List available symbols |
-| POST | `/api/data/fetch` | Fetch data from Binance |
-| GET | `/api/data/status` | Check data availability |
-| POST | `/api/backtest/run` | Run a backtest |
-| GET | `/api/backtest/{id}` | Get backtest results |
-
-## 🎮 Usage
-
-1. Open http://localhost:8000
-2. Select a symbol (e.g., SOLUSDT)
-3. Choose timeframe and date range
-4. Click "Fetch Data" to download from Binance
-5. Click "Run Backtest" to execute strategy
-6. View results: equity curve, metrics, trade history
-
-## 📄 License
+## License
 
 MIT

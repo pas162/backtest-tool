@@ -4,218 +4,830 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Backtest Platform</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <title>AI Trading Replay</title>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #131722;
+            color: #d1d4dc;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #2a2e39;
+            margin-bottom: 20px;
+        }
+
+        header h1 {
+            font-size: 24px;
+            color: #fff;
+        }
+
+        .config-bar {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            padding: 15px;
+            background: #1e222d;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .config-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .config-group label {
+            font-size: 12px;
+            color: #787b86;
+        }
+
+        select,
+        input {
+            background: #2a2e39;
+            border: 1px solid #363a45;
+            color: #d1d4dc;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        select:focus,
+        input:focus {
+            outline: none;
+            border-color: #2962ff;
+        }
+
+        /* Playback controls */
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px;
+            background: #1e222d;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .control-btn {
+            background: #2a2e39;
+            border: none;
+            color: #d1d4dc;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .control-btn:hover {
+            background: #363a45;
+        }
+
+        .control-btn.primary {
+            background: #2962ff;
+            color: #fff;
+        }
+
+        .control-btn.primary:hover {
+            background: #1e53e4;
+        }
+
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .speed-buttons {
+            display: flex;
+            gap: 5px;
+            margin-left: 20px;
+        }
+
+        .speed-btn {
+            background: #2a2e39;
+            border: 1px solid #363a45;
+            color: #787b86;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .speed-btn.active {
+            background: #2962ff;
+            border-color: #2962ff;
+            color: #fff;
+        }
+
+        .progress-container {
+            flex: 1;
+            margin-left: 20px;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: #2a2e39;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #26a69a, #2962ff);
+            width: 0%;
+            transition: width 0.1s;
+        }
+
+        .progress-text {
+            font-size: 12px;
+            color: #787b86;
+            margin-top: 5px;
+        }
+
+        /* Chart */
+        #chartContainer {
+            height: 500px;
+            background: #131722;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        /* Status panels */
+        .status-panels {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .status-panel {
+            background: #1e222d;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .status-panel h3 {
+            font-size: 12px;
+            color: #787b86;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .position-info {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .position-row {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .position-label {
+            color: #787b86;
+        }
+
+        .position-value {
+            font-weight: 600;
+        }
+
+        .position-value.long {
+            color: #26a69a;
+        }
+
+        .position-value.short {
+            color: #ef5350;
+        }
+
+        .position-value.profit {
+            color: #26a69a;
+        }
+
+        .position-value.loss {
+            color: #ef5350;
+        }
+
+        .equity-display {
+            font-size: 28px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .equity-change {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        /* Trade log */
+        .trade-log {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .trade-entry {
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2e39;
+            font-size: 13px;
+        }
+
+        .trade-entry:last-child {
+            border-bottom: none;
+        }
+
+        .trade-time {
+            color: #787b86;
+            font-size: 11px;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e222d;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #363a45;
+            border-radius: 3px;
+        }
+    </style>
 </head>
 
 <body>
     <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <h1>🚀 Backtest Platform</h1>
-            <p>Multi-Strategy Backtesting for Crypto Trading</p>
+        <header>
+            <h1>🤖 AI Trading Replay</h1>
         </header>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Control Panel -->
-            <section class="control-panel">
-                <h2>Configuration</h2>
+        <!-- Configuration -->
+        <div class="config-bar">
+            <div class="config-group">
+                <label>Symbol</label>
+                <select id="symbol">
+                    <option value="XRPUSDT" selected>XRPUSDT</option>
+                    <option value="BTCUSDT">BTCUSDT</option>
+                    <option value="ETHUSDT">ETHUSDT</option>
+                    <option value="SOLUSDT">SOLUSDT</option>
+                </select>
+            </div>
+            <div class="config-group">
+                <label>Timeframe</label>
+                <select id="timeframe">
+                    <option value="1m">1m</option>
+                    <option value="5m" selected>5m</option>
+                    <option value="15m">15m</option>
+                </select>
+            </div>
+            <div class="config-group">
+                <label>Start</label>
+                <input type="date" id="startDate" value="2025-12-01">
+            </div>
+            <div class="config-group">
+                <label>End</label>
+                <input type="date" id="endDate" value="2025-12-02">
+            </div>
+            <div class="config-group">
+                <label>Capital</label>
+                <input type="number" id="capital" value="100" min="10" style="width: 70px;">
+            </div>
+            <div class="config-group">
+                <label>Leverage</label>
+                <select id="leverage" style="width: 60px;">
+                    <option value="1">1x</option>
+                    <option value="5">5x</option>
+                    <option value="10">10x</option>
+                    <option value="20" selected>20x</option>
+                    <option value="50">50x</option>
+                    <option value="100">100x</option>
+                </select>
+            </div>
+            <button class="control-btn primary" id="loadBtn">📊 Load Data</button>
+        </div>
 
-                <div class="form-group">
-                    <label for="symbol">Symbol</label>
-                    <select id="symbol">
-                        <option value="SOLUSDT">SOLUSDT</option>
-                        <option value="BTCUSDT">BTCUSDT</option>
-                        <option value="ETHUSDT">ETHUSDT</option>
-                        <option value="XRPUSDT">XRPUSDT</option>
-                        <option value="DOGEUSDT">DOGEUSDT</option>
-                        <option value="ADAUSDT">ADAUSDT</option>
-                        <option value="AVAXUSDT">AVAXUSDT</option>
-                        <option value="DOTUSDT">DOTUSDT</option>
-                        <option value="LINKUSDT">LINKUSDT</option>
-                    </select>
+        <!-- Playback Controls -->
+        <div class="playback-controls">
+            <button class="control-btn" id="playBtn" disabled>▶️ Play</button>
+            <button class="control-btn" id="pauseBtn" disabled>⏸️ Pause</button>
+            <button class="control-btn" id="resetBtn" disabled>⏹️ Reset</button>
+
+            <div class="speed-buttons">
+                <button class="speed-btn active" data-speed="100">1x</button>
+                <button class="speed-btn" data-speed="50">2x</button>
+                <button class="speed-btn" data-speed="10">10x</button>
+                <button class="speed-btn" data-speed="1">100x</button>
+            </div>
+
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
                 </div>
-
-                <div class="form-group">
-                    <label for="timeframe">Timeframe</label>
-                    <select id="timeframe">
-                        <option value="1m">1 Minute</option>
-                        <option value="5m" selected>5 Minutes</option>
-                        <option value="15m">15 Minutes</option>
-                        <option value="1h">1 Hour</option>
-                        <option value="4h">4 Hours</option>
-                        <option value="1d">1 Day</option>
-                    </select>
+                <div class="progress-text">
+                    <span id="currentBar">0</span> / <span id="totalBars">0</span> bars
                 </div>
+            </div>
+        </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="startDate">Start Date</label>
-                        <input type="date" id="startDate">
-                    </div>
-                    <div class="form-group">
-                        <label for="endDate">End Date</label>
-                        <input type="date" id="endDate">
-                    </div>
-                </div>
+        <!-- Chart -->
+        <div id="chartContainer"></div>
 
-                <div class="form-group">
-                    <label for="strategy">Strategy</label>
-                    <select id="strategy" onchange="toggleSlTpFields()">
-                        <option value="vwap_supertrend_ema">VWAP SuperTrend EMA</option>
-                        <option value="ml_xgboost" selected>🤖 ML (XGBoost)</option>
-                    </select>
-                </div>
+        <!-- Status Panels -->
+        <div class="status-panels">
+            <div class="status-panel">
+                <h3>💰 Equity</h3>
+                <div class="equity-display" id="equityValue">$100.00</div>
+                <div class="equity-change" id="equityChange">+0.00%</div>
+            </div>
 
-                <!-- Strategy Parameters (for VWAP strategy) -->
-                <div id="strategyParams" class="params-section">
-                    <h3>Strategy Parameters</h3>
-                    <div id="vwapParams" class="params-grid">
-                        <div class="form-group">
-                            <label for="ema1_length">EMA 1</label>
-                            <input type="number" id="ema1_length" value="21" min="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="ema2_length">EMA 2</label>
-                            <input type="number" id="ema2_length" value="50" min="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="st_length">ST Length</label>
-                            <input type="number" id="st_length" value="12" min="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="st_multiplier">ST Mult</label>
-                            <input type="number" id="st_multiplier" value="3.0" min="0.1" step="0.1">
-                        </div>
-                    </div>
-                    <div id="mlParams" class="params-grid" style="display: none;">
-                        <p style="grid-column: 1/-1; color: #888; font-size: 14px;">
-                            🤖 ML Strategy uses pre-trained model with default parameters.<br>
-                            No additional configuration needed.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Backtest Settings -->
-                <div class="params-section">
-                    <h3>Backtest Settings</h3>
-                    <div class="params-grid">
-                        <div class="form-group">
-                            <label for="initialCapital">Capital ($)</label>
-                            <input type="number" id="initialCapital" value="100" min="10" step="10">
-                        </div>
-                        <div class="form-group">
-                            <label for="leverage">Leverage (x)</label>
-                            <input type="number" id="leverage" value="20" min="1" max="125" step="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="positionSize">Position ($)</label>
-                            <input type="number" id="positionSize" value="10" min="1" step="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="commission">Fee (%)</label>
-                            <input type="number" id="commission" value="0.1" min="0" max="1" step="0.01">
-                        </div>
-                    </div>
-                    <p class="hint-text">Buying power: $100 × 20x = $2,000</p>
-                </div>
-
-                <button id="runBacktestBtn" class="btn btn-primary btn-full">
-                    ▶️ Run Backtest
-                </button>
-
-                <!-- Progress Section -->
-                <div id="progressSection" class="progress-section" style="display: none;">
-                    <div class="progress-bar">
-                        <div id="progressFill" class="progress-fill"></div>
-                    </div>
-                    <p id="progressText" class="progress-text">Initializing...</p>
-                </div>
-
-                <div id="status" class="status-box"></div>
-            </section>
-
-            <!-- Results Panel -->
-            <section class="results-panel">
-                <h2>Results</h2>
-
-                <!-- Metrics Cards -->
-                <div id="metricsGrid" class="metrics-grid">
-                    <div class="metric-card">
-                        <span class="metric-label">Return</span>
-                        <span class="metric-value" id="returnPct">-</span>
-                    </div>
-                    <div class="metric-card">
-                        <span class="metric-label">Win Rate</span>
-                        <span class="metric-value" id="winRate">-</span>
-                    </div>
-                    <div class="metric-card">
-                        <span class="metric-label">Max Drawdown</span>
-                        <span class="metric-value" id="maxDrawdown">-</span>
-                    </div>
-                    <div class="metric-card">
-                        <span class="metric-label">Total Trades</span>
-                        <span class="metric-value" id="totalTrades">-</span>
-                    </div>
-                    <div class="metric-card">
-                        <span class="metric-label">Sharpe Ratio</span>
-                        <span class="metric-value" id="sharpeRatio">-</span>
-                    </div>
-                    <div class="metric-card">
-                        <span class="metric-label">Profit Factor</span>
-                        <span class="metric-value" id="profitFactor">-</span>
+            <div class="status-panel">
+                <h3>📊 Current Position</h3>
+                <div class="position-info" id="positionInfo">
+                    <div class="position-row">
+                        <span class="position-label">Status</span>
+                        <span class="position-value">No Position</span>
                     </div>
                 </div>
+            </div>
 
-                <!-- Candlestick Chart with Trades -->
-                <div class="chart-container" style="margin-bottom: 20px;">
-                    <h3>📊 Chart with Trades</h3>
-                    <div id="candlestickChart" style="width: 100%; height: 400px;"></div>
-                </div>
-
-                <!-- Equity Curve Chart -->
-                <div class="chart-container">
-                    <h3>Equity Curve</h3>
-                    <div id="equityChart"></div>
-                </div>
-
-                <!-- Trades Table -->
-                <div class="trades-section">
-                    <h3>Trade History</h3>
-                    <div class="table-wrapper">
-                        <table id="tradesTable">
-                            <thead>
-                                <tr>
-                                    <th>Entry</th>
-                                    <th>Exit</th>
-                                    <th>Side</th>
-                                    <th>Entry $</th>
-                                    <th>Exit $</th>
-                                    <th>PnL</th>
-                                    <th>%</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tradesBody">
-                                <tr>
-                                    <td colspan="7" class="no-data">Run a backtest to see trades</td>
-                                </tr>
-                            </tbody>
-                        </table>
+            <div class="status-panel">
+                <h3>📈 Statistics</h3>
+                <div class="position-info" id="statsInfo">
+                    <div class="position-row">
+                        <span class="position-label">Total Trades</span>
+                        <span class="position-value" id="totalTrades">0</span>
+                    </div>
+                    <div class="position-row">
+                        <span class="position-label">Win Rate</span>
+                        <span class="position-value" id="winRate">-</span>
+                    </div>
+                    <div class="position-row">
+                        <span class="position-label">Profit/Loss</span>
+                        <span class="position-value" id="totalPnl">$0.00</span>
                     </div>
                 </div>
-            </section>
-        </main>
+            </div>
 
-        <!-- Footer -->
-        <footer class="footer">
-            <p>Backtest Platform v1.0 | Data from Binance Futures</p>
-        </footer>
+            <div class="status-panel">
+                <h3>📝 Trade Log</h3>
+                <div class="trade-log" id="tradeLog">
+                    <p style="color: #787b86;">Trades will appear here...</p>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script src="/static/js/app.js"></script>
+    <script>
+        // State
+        let chart = null;
+        let candleSeries = null;
+        let candles = [];
+        let decisions = [];
+        let currentBar = 0;
+        let isPlaying = false;
+        let playInterval = null;
+        let speed = 100;
+        let initialCapital = 100;
+        let equity = 100;
+        let position = null;
+        let trades = [];
+        let markers = [];
+        let markersPrimitive = null;  // For V5 markers API
+
+        // DOM Elements
+        const loadBtn = document.getElementById('loadBtn');
+        const playBtn = document.getElementById('playBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const progressFill = document.getElementById('progressFill');
+        const currentBarEl = document.getElementById('currentBar');
+        const totalBarsEl = document.getElementById('totalBars');
+
+        // Initialize chart
+        function initChart() {
+            const container = document.getElementById('chartContainer');
+            container.innerHTML = '';
+
+            chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 500,
+                layout: {
+                    background: { color: '#131722' },
+                    textColor: '#d1d4dc',
+                },
+                grid: {
+                    vertLines: { color: '#1e222d' },
+                    horzLines: { color: '#1e222d' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: {
+                        color: '#758696',
+                        width: 1,
+                        style: 2,
+                    },
+                    horzLine: {
+                        color: '#758696',
+                        width: 1,
+                        style: 2,
+                    },
+                },
+                rightPriceScale: {
+                    borderColor: '#2a2e39',
+                },
+                timeScale: {
+                    borderColor: '#2a2e39',
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
+            });
+
+            // Add candlestick series (V5 API)
+            candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+                upColor: '#26a69a',
+                downColor: '#ef5350',
+                borderVisible: false,
+                wickUpColor: '#26a69a',
+                wickDownColor: '#ef5350',
+            });
+
+            // Reset markers primitive
+            markersPrimitive = null;
+
+            // Resize handler
+            window.addEventListener('resize', () => {
+                chart.applyOptions({ width: container.clientWidth });
+            });
+        }
+
+        // Update markers on chart (V5 API)
+        function updateMarkers() {
+            // Markers disabled due to API incompatibility - check Trade Log panel
+        }
+
+        // Load data
+        async function loadData() {
+            loadBtn.disabled = true;
+            loadBtn.textContent = '⏳ Loading...';
+
+            const payload = {
+                symbol: document.getElementById('symbol').value,
+                timeframe: document.getElementById('timeframe').value,
+                start_date: document.getElementById('startDate').value,
+                end_date: document.getElementById('endDate').value,
+                agent_type: 'ml',
+                initial_capital: parseFloat(document.getElementById('capital').value),
+                position_size: parseFloat(document.getElementById('leverage').value),
+                speed: 0
+            };
+
+            console.log('Sending Replay Request:', payload);
+            console.log('Selected Leverage:', document.getElementById('leverage').value);
+
+            try {
+                const response = await fetch('/api/replay/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.detail || 'Failed to load data');
+                }
+
+                // Store data
+                candles = data.candles || [];
+                decisions = data.decision_log || [];
+                initialCapital = parseFloat(document.getElementById('capital').value);
+                currentLeverage = parseFloat(document.getElementById('leverage').value);
+                equity = initialCapital;
+
+                // Reset state
+                currentBar = 0;
+                position = null;
+                trades = [];
+                markers = [];
+
+                // Initialize chart
+                initChart();
+
+                // Update UI
+                totalBarsEl.textContent = candles.length;
+                currentBarEl.textContent = '0';
+                progressFill.style.width = '0%';
+                updateEquityDisplay();
+                updatePositionDisplay();
+                updateStatsDisplay();
+                document.getElementById('tradeLog').innerHTML = '<p style="color: #787b86;">Ready to play...</p>';
+
+                // Enable controls
+                playBtn.disabled = false;
+                resetBtn.disabled = false;
+
+                loadBtn.textContent = '✅ Loaded ' + candles.length + ' bars';
+
+            } catch (error) {
+                alert('Error: ' + error.message);
+                loadBtn.textContent = '📊 Load Data';
+            } finally {
+                loadBtn.disabled = false;
+            }
+        }
+
+        // Play replay
+        function play() {
+            if (isPlaying) return;
+            isPlaying = true;
+            playBtn.disabled = true;
+            pauseBtn.disabled = false;
+
+            playInterval = setInterval(() => {
+                if (currentBar >= candles.length) {
+                    pause();
+                    return;
+                }
+
+                // Add candle
+                const candle = candles[currentBar];
+                candleSeries.update({
+                    time: candle.time,
+                    open: candle.open,
+                    high: candle.high,
+                    low: candle.low,
+                    close: candle.close
+                });
+
+                // Check for decision at this bar (match by bar index, not timestamp)
+                const decision = decisions.find(d => d.bar === currentBar);
+
+                if (decision && decision.decision !== 'HOLD') {
+                    processDecision(decision, candle);
+                }
+
+                // Update progress
+                currentBar++;
+                currentBarEl.textContent = currentBar;
+                progressFill.style.width = (currentBar / candles.length * 100) + '%';
+
+            }, speed);
+        }
+
+        // Pause
+        function pause() {
+            isPlaying = false;
+            if (playInterval) {
+                clearInterval(playInterval);
+                playInterval = null;
+            }
+            playBtn.disabled = false;
+            pauseBtn.disabled = true;
+        }
+
+        // Reset
+        function reset() {
+            pause();
+            currentBar = 0;
+            position = null;
+            trades = [];
+            markers = [];
+            equity = initialCapital;
+
+            initChart();
+
+            currentBarEl.textContent = '0';
+            progressFill.style.width = '0%';
+            updateEquityDisplay();
+            updatePositionDisplay();
+            updateStatsDisplay();
+            document.getElementById('tradeLog').innerHTML = '<p style="color: #787b86;">Ready to play...</p>';
+        }
+
+        // Process AI decision
+        function processDecision(decision, candle) {
+            try {
+                const action = decision.decision;
+                const price = decision.price || candle.close;  // Fallback to candle close
+
+                console.log('[TRADE] Processing:', action, 'at price', price);
+
+                if (action === 'BUY' && !position) {
+                    // Open long position
+                    position = {
+                        side: 'LONG',
+                        entryPrice: price,
+                        entryTime: new Date(decision.time),
+                        entryPrice: price,
+                        entryTime: new Date(decision.time),
+                        size: currentLeverage
+                    };
+
+                    // Add marker
+                    markers.push({
+                        time: candle.time,
+                        position: 'belowBar',
+                        color: '#26a69a',
+                        shape: 'arrowUp',
+                        text: 'BUY'
+                    });
+                    updateMarkers();
+
+                    addTradeLog('🟢 LONG @ $' + (price ? price.toFixed(4) : 'N/A'), decision.reasoning);
+                    updatePositionDisplay();
+
+                } else if (action === 'SELL' && !position) {
+                    // Open short position
+                    position = {
+                        side: 'SHORT',
+                        entryPrice: price,
+                        entryTime: new Date(decision.time),
+                        entryPrice: price,
+                        entryTime: new Date(decision.time),
+                        size: currentLeverage
+                    };
+
+                    markers.push({
+                        time: candle.time,
+                        position: 'aboveBar',
+                        color: '#ef5350',
+                        shape: 'arrowDown',
+                        text: 'SHORT'
+                    });
+                    updateMarkers();
+
+                    addTradeLog('🔴 SHORT @ $' + price.toFixed(4), decision.reasoning);
+                    updatePositionDisplay();
+
+                } else if ((action === 'CLOSE' || action === 'SELL' || action === 'BUY') && position) {
+                    // Close position
+                    // Raw Price Change %
+                    const rawPnlPct = position.side === 'LONG'
+                        ? (price - position.entryPrice) / position.entryPrice * 100
+                        : (position.entryPrice - price) / position.entryPrice * 100;
+
+                    // Leveraged PnL Dollar and Percent
+                    const pnlDollar = (rawPnlPct / 100) * position.size; // Scaled by Size (Leverage on 100 base)
+                    const leveragedPnlPct = rawPnlPct * position.size;   // Display %
+
+                    equity += pnlDollar;
+
+                    const isProfit = pnlDollar > 0;
+                    markers.push({
+                        time: candle.time,
+                        position: position.side === 'LONG' ? 'aboveBar' : 'belowBar',
+                        color: isProfit ? '#26a69a' : '#ef5350',
+                        shape: position.side === 'LONG' ? 'arrowDown' : 'arrowUp',
+                        text: (isProfit ? '+' : '') + leveragedPnlPct.toFixed(1) + '%'
+                    });
+                    updateMarkers();
+
+                    trades.push({
+                        side: position.side,
+                        pnl: leveragedPnlPct,
+                        pnlDollar: pnlDollar
+                    });
+
+                    addTradeLog(
+                        (isProfit ? '✅' : '❌') + ' CLOSE ' + position.side +
+                        ' | ' + (isProfit ? '+' : '') + leveragedPnlPct.toFixed(2) + '%',
+                        '$' + pnlDollar.toFixed(2)
+                    );
+
+                    position = null;
+                    updateEquityDisplay();
+                    updatePositionDisplay();
+                    updateStatsDisplay();
+                }
+            } catch (err) {
+                console.error('[TRADE ERROR]', err, decision);
+            }
+        }
+
+        // Update equity display
+        function updateEquityDisplay() {
+            document.getElementById('equityValue').textContent = '$' + equity.toFixed(2);
+            const change = ((equity - initialCapital) / initialCapital * 100);
+            const changeEl = document.getElementById('equityChange');
+            changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+            changeEl.className = 'equity-change ' + (change >= 0 ? 'profit' : 'loss');
+        }
+
+        // Update position display
+        function updatePositionDisplay() {
+            const el = document.getElementById('positionInfo');
+            if (!position) {
+                el.innerHTML = `
+                    <div class="position-row">
+                        <span class="position-label">Status</span>
+                        <span class="position-value">No Position</span>
+                    </div>
+                `;
+            } else {
+                const currentPrice = currentBar > 0 ? candles[currentBar - 1].close : position.entryPrice;
+                const unrealizedPnl = position.side === 'LONG'
+                    ? (currentPrice - position.entryPrice) / position.entryPrice * 100
+                    : (position.entryPrice - currentPrice) / position.entryPrice * 100;
+
+                el.innerHTML = `
+                    <div class="position-row">
+                        <span class="position-label">Side</span>
+                        <span class="position-value ${position.side.toLowerCase()}">${position.side}</span>
+                    </div>
+                    <div class="position-row">
+                        <span class="position-label">Entry</span>
+                        <span class="position-value">$${position.entryPrice.toFixed(4)}</span>
+                    </div>
+                    <div class="position-row">
+                        <span class="position-label">Unrealized P/L</span>
+                        <span class="position-value ${unrealizedPnl >= 0 ? 'profit' : 'loss'}">
+                            ${unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}%
+                        </span>
+                    </div>
+                `;
+            }
+        }
+
+        // Update stats display
+        function updateStatsDisplay() {
+            document.getElementById('totalTrades').textContent = trades.length;
+
+            if (trades.length > 0) {
+                const wins = trades.filter(t => t.pnl > 0).length;
+                document.getElementById('winRate').textContent = (wins / trades.length * 100).toFixed(1) + '%';
+
+                const totalPnl = trades.reduce((sum, t) => sum + t.pnlDollar, 0);
+                const pnlEl = document.getElementById('totalPnl');
+                pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
+                pnlEl.className = 'position-value ' + (totalPnl >= 0 ? 'profit' : 'loss');
+            }
+        }
+
+        // Add trade log entry
+        function addTradeLog(message, detail) {
+            const el = document.getElementById('tradeLog');
+            if (el.querySelector('p')) {
+                el.innerHTML = '';
+            }
+
+            const entry = document.createElement('div');
+            entry.className = 'trade-entry';
+            entry.innerHTML = `
+                <div>${message}</div>
+                <div class="trade-time">${detail || ''}</div>
+            `;
+            el.insertBefore(entry, el.firstChild);
+        }
+
+        // Event listeners
+        loadBtn.addEventListener('click', loadData);
+        playBtn.addEventListener('click', play);
+        pauseBtn.addEventListener('click', pause);
+        resetBtn.addEventListener('click', reset);
+
+        // Speed buttons
+        document.querySelectorAll('.speed-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                speed = parseInt(btn.dataset.speed);
+
+                // Restart if playing
+                if (isPlaying) {
+                    pause();
+                    play();
+                }
+            });
+        });
+
+        // Initialize
+        initChart();
+    </script>
 </body>
 
 </html>

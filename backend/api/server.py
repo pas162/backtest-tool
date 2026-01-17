@@ -57,20 +57,8 @@ app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 @app.get("/")
 async def root():
-    """Serve the main dashboard."""
+    """Serve the AI Trading Replay dashboard."""
     return FileResponse("frontend/index.html")
-
-
-@app.get("/replay")
-async def replay_page():
-    """Serve the AI Replay Simulator page."""
-    return FileResponse("frontend/replay.html")
-
-
-@app.get("/trader")
-async def trader_page():
-    """Serve the new Trading Replay page."""
-    return FileResponse("frontend/trader-replay.html")
 
 
 @app.get("/health")
