@@ -18,12 +18,12 @@ Frontend (Vanilla JS) → FastAPI Backend → PostgreSQL/Redis
 1. **Data Fetching**: `BinanceFetcher` pulls OHLCV via ccxt → cached in PostgreSQL
 2. **Replay Simulation**: `ReplayEngine` processes bars sequentially, ensuring agents see only historical data (no look-ahead bias)
 3. **Trading Decisions**: ML agent returns `Decision.BUY/SELL/HOLD/CLOSE` with reasoning
-4. **ML Predictions**: XGBoost model trained on technical features predicts price direction
+4. **ML Predictions**: XGBoost model trained on Volume & Auction features predicts price direction
 
 ## Training the ML Model
 
 ### Via UI
-Click the **🧠 Train Model** button in the frontend. It trains on the selected symbol with default settings.
+Click the **🧠 Train Model** button in the frontend to open settings modal.
 
 ### Via API (with custom arguments)
 ```bash
@@ -49,21 +49,38 @@ curl -X POST http://localhost:8000/api/replay/train \
 
 Model saved to `models/trading_model.pkl`
 
-## Key Patterns
+## ML Features (Volume & Auction Theory)
 
-### Agent Interface Pattern
-Trading agents inherit from `TradingAgent` ([backend/replay/agent.py](backend/replay/agent.py)):
-```python
-class TradingAgent(ABC):
-    @abstractmethod
-    def analyze(self, data: pd.DataFrame, order_flow: dict) -> Decision:
-        """data contains ONLY historical bars up to current - no future data"""
-```
+The model uses **25 features** based on Volume and Auction Market Theory:
 
-### Feature Engineering
-`FeatureEngineer` ([backend/ml/features.py](backend/ml/features.py)) creates standardized ML features:
-- Column names auto-capitalized: `df['Close']` not `df['close']`
-- Minimum 60 bars needed for full feature set (EMAs, RSI, MACD, Bollinger Bands)
+### Volume Analysis
+- `volume_ratio` - Activity level vs 20-bar average
+- `volume_trend` - Volume momentum (increasing/decreasing)
+- `cvd_normalized` - Cumulative Volume Delta (buyer vs seller control)
+- `cvd_momentum_norm` - Change in buying/selling pressure
+
+### Price Action
+- `body_ratio` - Candle body/range ratio (conviction)
+- `upper_wick_ratio` - Rejection from above
+- `lower_wick_ratio` - Rejection from below
+- `wick_imbalance` - Net rejection direction
+- `close_position` - Where price closed in range (0=low, 1=high)
+- `bullish_streak` / `bearish_streak` - Consecutive candles
+
+### Auction/Market Structure
+- `va_position` - Price position in Value Area
+- `poc_distance` - Distance from Point of Control (fair value)
+- `atr_ratio` - Balance vs Imbalance (consolidation vs trending)
+- `range_ratio` - Range expansion/contraction
+
+### Support/Resistance
+- `dist_to_high` / `dist_to_low` - Distance to recent S/R levels
+- `near_high` / `near_low` - At potential S/R zone
+- `breakout_up` / `breakout_down` - Breaking levels with volume
+
+### Volume-Price Relationship
+- `vol_price_confirm` - Volume confirms price direction
+- `effort_result` - Absorption detection (high volume, small move)
 
 ## Development Commands
 
@@ -97,5 +114,5 @@ Routes mounted at `/api` prefix:
 
 Single-page app in [frontend/index.html](frontend/index.html):
 - Uses Lightweight Charts library for TradingView-style charts
-- **🧠 Train Model** button - trains XGBoost on selected symbol
+- **🧠 Train Model** button - opens modal with training settings
 - **📊 Load Data** button - runs replay simulation

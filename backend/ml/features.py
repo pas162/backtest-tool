@@ -1,7 +1,8 @@
 """
 Feature Engineering for ML Trading Agent.
 
-Creates technical indicators and order flow features from OHLCV data.
+Volume & Auction Market Theory based features.
+Focus on: Volume analysis, Price action, Market structure
 """
 
 import pandas as pd
@@ -13,10 +14,11 @@ class FeatureEngineer:
     """
     Generates features from OHLCV data for ML model.
     
-    Features include:
-    - Technical indicators (RSI, MACD, EMA ratios)
-    - Volume features (volume ratio, CVD)
-    - Price patterns (momentum, candle patterns)
+    Based on Volume & Auction Market Theory:
+    - Volume Delta (buyer vs seller aggression)
+    - Price Action (candle structure, wicks = rejection)
+    - Market Structure (value area, support/resistance)
+    - Volume-Price Relationship (confirmation/divergence)
     """
     
     def __init__(self):
@@ -24,7 +26,7 @@ class FeatureEngineer:
     
     def create_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """
-        Create all features from OHLCV data.
+        Create Volume & Auction based features from OHLCV data.
         
         Args:
             data: DataFrame with OHLCV columns
@@ -43,105 +45,169 @@ class FeatureEngineer:
         open_ = df['Open']
         volume = df['Volume']
         
-        # === TREND FEATURES ===
+        # === VOLUME ANALYSIS ===
         
-        # EMA ratios
-        df['ema_5'] = close.ewm(span=5).mean()
-        df['ema_10'] = close.ewm(span=10).mean()
-        df['ema_20'] = close.ewm(span=20).mean()
-        df['ema_50'] = close.ewm(span=50).mean()
-        
-        df['ema_5_10_ratio'] = df['ema_5'] / df['ema_10']
-        df['ema_10_20_ratio'] = df['ema_10'] / df['ema_20']
-        df['ema_20_50_ratio'] = df['ema_20'] / df['ema_50']
-        
-        # Price vs EMAs
-        df['price_ema20_ratio'] = close / df['ema_20']
-        df['price_ema50_ratio'] = close / df['ema_50']
-        
-        # === MOMENTUM FEATURES ===
-        
-        # RSI
-        df['rsi_14'] = self._calculate_rsi(close, 14)
-        df['rsi_7'] = self._calculate_rsi(close, 7)
-        
-        # Momentum (price change)
-        df['momentum_3'] = close.pct_change(3) * 100
-        df['momentum_5'] = close.pct_change(5) * 100
-        df['momentum_10'] = close.pct_change(10) * 100
-        
-        # Rate of change
-        df['roc_5'] = (close - close.shift(5)) / close.shift(5) * 100
-        
-        # === MACD ===
-        ema12 = close.ewm(span=12).mean()
-        ema26 = close.ewm(span=26).mean()
-        df['macd'] = ema12 - ema26
-        df['macd_signal'] = df['macd'].ewm(span=9).mean()
-        df['macd_hist'] = df['macd'] - df['macd_signal']
-        
-        # === VOLATILITY FEATURES ===
-        
-        # ATR
-        df['atr_14'] = self._calculate_atr(high, low, close, 14)
-        df['atr_pct'] = df['atr_14'] / close * 100
-        
-        # Bollinger Bands
-        df['bb_middle'] = close.rolling(20).mean()
-        df['bb_std'] = close.rolling(20).std()
-        df['bb_upper'] = df['bb_middle'] + 2 * df['bb_std']
-        df['bb_lower'] = df['bb_middle'] - 2 * df['bb_std']
-        df['bb_position'] = (close - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
-        
-        # === VOLUME FEATURES ===
-        
-        # Volume ratio
+        # Volume relative to average (activity level)
         df['volume_sma_20'] = volume.rolling(20).mean()
-        df['volume_ratio'] = volume / df['volume_sma_20']
+        df['volume_ratio'] = volume / df['volume_sma_20'].replace(0, 1)
         
-        # Volume change
-        df['volume_change'] = volume.pct_change() * 100
+        # Volume trend (is volume increasing or decreasing)
+        df['volume_sma_5'] = volume.rolling(5).mean()
+        df['volume_trend'] = df['volume_sma_5'] / df['volume_sma_20'].replace(0, 1)
         
-        # CVD (Cumulative Volume Delta) approximation
-        # Green candle = buy volume, Red candle = sell volume
-        df['delta'] = np.where(close > open_, volume, -volume)
-        df['cvd_5'] = df['delta'].rolling(5).sum()
-        df['cvd_10'] = df['delta'].rolling(10).sum()
-        df['cvd_normalized'] = df['cvd_10'] / df['volume_sma_20'] / 10
+        # Volume Delta approximation (buyer vs seller)
+        # Based on candle close position within range
+        candle_range = (high - low).replace(0, np.nan)
+        close_position = (close - low) / candle_range  # 0 = closed at low, 1 = closed at high
         
-        # === CANDLE PATTERN FEATURES ===
+        # Delta = Volume * (2 * close_position - 1)
+        # If close at high: delta = +volume (buyers won)
+        # If close at low: delta = -volume (sellers won)
+        df['volume_delta'] = volume * (2 * close_position - 1)
         
-        # Candle body ratio
-        candle_range = high - low
+        # Cumulative Volume Delta (who's in control over time)
+        df['cvd_5'] = df['volume_delta'].rolling(5).sum()
+        df['cvd_10'] = df['volume_delta'].rolling(10).sum()
+        df['cvd_20'] = df['volume_delta'].rolling(20).sum()
+        
+        # Normalized CVD (for comparison across different volume levels)
+        df['cvd_normalized'] = df['cvd_10'] / (df['volume_sma_20'] * 10).replace(0, 1)
+        
+        # CVD momentum (is buying/selling pressure increasing)
+        df['cvd_momentum'] = df['cvd_5'] - df['cvd_5'].shift(5)
+        df['cvd_momentum_norm'] = df['cvd_momentum'] / df['volume_sma_20'].replace(0, 1)
+        
+        # === PRICE ACTION (Candle Analysis) ===
+        
+        # Body ratio (conviction - large body = strong conviction)
         candle_body = abs(close - open_)
-        df['body_ratio'] = candle_body / candle_range.replace(0, np.nan)
+        df['body_ratio'] = candle_body / candle_range
         
-        # Upper/Lower wick
-        df['upper_wick'] = np.where(close > open_, high - close, high - open_) / candle_range.replace(0, np.nan)
-        df['lower_wick'] = np.where(close > open_, open_ - low, close - low) / candle_range.replace(0, np.nan)
+        # Wick ratios (rejection signals)
+        upper_wick = high - np.maximum(close, open_)
+        lower_wick = np.minimum(close, open_) - low
         
-        # Candle direction (1 = bullish, 0 = bearish)
-        df['candle_direction'] = (close > open_).astype(int)
+        df['upper_wick_ratio'] = upper_wick / candle_range  # Rejection from above
+        df['lower_wick_ratio'] = lower_wick / candle_range  # Rejection from below
         
-        # Consecutive candles
-        df['consecutive_bullish'] = (df['candle_direction'].rolling(3).sum())
+        # Wick imbalance (which side has more rejection)
+        df['wick_imbalance'] = df['lower_wick_ratio'] - df['upper_wick_ratio']
+        
+        # Close position in range (0-1, where 1 = closed at high)
+        df['close_position'] = close_position
+        
+        # Candle direction
+        df['is_bullish'] = (close > open_).astype(int)
+        
+        # Consecutive direction (momentum)
+        df['bullish_streak'] = self._count_streak(df['is_bullish'], 1)
+        df['bearish_streak'] = self._count_streak(df['is_bullish'], 0)
+        
+        # === AUCTION THEORY / MARKET STRUCTURE ===
+        
+        # Value Area approximation using rolling stats
+        # POC (Point of Control) approximation = typical price
+        df['typical_price'] = (high + low + close) / 3
+        df['poc_20'] = df['typical_price'].rolling(20).mean()
+        
+        # Value Area (1 std dev around POC)
+        df['price_std_20'] = close.rolling(20).std()
+        df['va_high'] = df['poc_20'] + df['price_std_20']
+        df['va_low'] = df['poc_20'] - df['price_std_20']
+        
+        # Price position relative to Value Area
+        va_range = (df['va_high'] - df['va_low']).replace(0, np.nan)
+        df['va_position'] = (close - df['va_low']) / va_range
+        # < 0 = below VA (potential buy zone)
+        # > 1 = above VA (potential sell zone)
+        # 0.5 = at POC (fair value)
+        
+        # Distance from POC (normalized)
+        df['poc_distance'] = (close - df['poc_20']) / df['price_std_20'].replace(0, 1)
+        
+        # Balance vs Imbalance detection
+        # Low ATR = balance (consolidation), High ATR = imbalance (trending)
+        df['atr_14'] = self._calculate_atr(high, low, close, 14)
+        df['atr_ratio'] = df['atr_14'] / df['atr_14'].rolling(50).mean().replace(0, 1)
+        
+        # Rotation Factor (how much price rotates within range)
+        # High rotation = balance, Low rotation = trend
+        df['daily_range'] = high - low
+        df['range_sma'] = df['daily_range'].rolling(10).mean()
+        df['range_ratio'] = df['daily_range'] / df['range_sma'].replace(0, 1)
+        
+        # === SUPPORT/RESISTANCE LEVELS ===
+        
+        # Recent highs and lows
+        df['high_20'] = high.rolling(20).max()
+        df['low_20'] = low.rolling(20).min()
+        
+        # Distance to recent high/low (potential S/R)
+        range_20 = (df['high_20'] - df['low_20']).replace(0, np.nan)
+        df['dist_to_high'] = (df['high_20'] - close) / range_20
+        df['dist_to_low'] = (close - df['low_20']) / range_20
+        
+        # Near level detection (within 1% of high/low)
+        df['near_high'] = (df['dist_to_high'] < 0.05).astype(int)
+        df['near_low'] = (df['dist_to_low'] < 0.05).astype(int)
+        
+        # Breakout detection (price outside recent range with volume)
+        df['breakout_up'] = ((close > df['high_20'].shift(1)) & (df['volume_ratio'] > 1.5)).astype(int)
+        df['breakout_down'] = ((close < df['low_20'].shift(1)) & (df['volume_ratio'] > 1.5)).astype(int)
+        
+        # === VOLUME-PRICE RELATIONSHIP ===
+        
+        # Price change
+        df['price_change'] = close.pct_change() * 100
+        df['price_change_5'] = close.pct_change(5) * 100
+        
+        # Volume-Price confirmation
+        # Bullish: Price up + Volume up = strong
+        # Bearish: Price down + Volume up = strong
+        # Divergence: Price up + Volume down = weak
+        df['vol_price_confirm'] = np.sign(df['price_change']) * df['volume_ratio']
+        
+        # Effort vs Result
+        # High volume but small price move = absorption (potential reversal)
+        df['effort_result'] = abs(df['price_change']) / df['volume_ratio'].replace(0, 1)
         
         # === SELECT FEATURES ===
         
         feature_cols = [
-            # Trend
-            'ema_5_10_ratio', 'ema_10_20_ratio', 'ema_20_50_ratio',
-            'price_ema20_ratio', 'price_ema50_ratio',
-            # Momentum
-            'rsi_14', 'rsi_7', 'momentum_3', 'momentum_5', 'momentum_10', 'roc_5',
-            # MACD
-            'macd_hist',
-            # Volatility
-            'atr_pct', 'bb_position',
-            # Volume
-            'volume_ratio', 'cvd_normalized',
-            # Candle
-            'body_ratio', 'upper_wick', 'lower_wick', 'candle_direction', 'consecutive_bullish',
+            # Volume Analysis
+            'volume_ratio',           # Activity level
+            'volume_trend',           # Volume momentum
+            'cvd_normalized',         # Who's in control
+            'cvd_momentum_norm',      # Buying/selling pressure change
+            
+            # Price Action
+            'body_ratio',             # Conviction
+            'upper_wick_ratio',       # Rejection from above
+            'lower_wick_ratio',       # Rejection from below
+            'wick_imbalance',         # Net rejection direction
+            'close_position',         # Where price closed in range
+            'bullish_streak',         # Consecutive bullish candles
+            'bearish_streak',         # Consecutive bearish candles
+            
+            # Auction/Market Structure
+            'va_position',            # Position in Value Area
+            'poc_distance',           # Distance from fair value
+            'atr_ratio',              # Balance vs Imbalance
+            'range_ratio',            # Range expansion/contraction
+            
+            # Support/Resistance
+            'dist_to_high',           # Distance to resistance
+            'dist_to_low',            # Distance to support
+            'near_high',              # At resistance
+            'near_low',               # At support
+            'breakout_up',            # Breaking resistance with volume
+            'breakout_down',          # Breaking support with volume
+            
+            # Volume-Price Relationship
+            'price_change',           # Current bar momentum
+            'price_change_5',         # 5-bar momentum
+            'vol_price_confirm',      # Confirmation signal
+            'effort_result',          # Absorption detection
         ]
         
         self.feature_names = feature_cols
@@ -155,6 +221,14 @@ class FeatureEngineer:
         features_df = features_df.fillna(0)
         
         return features_df
+    
+    def _count_streak(self, series: pd.Series, value: int) -> pd.Series:
+        """Count consecutive occurrences of a value."""
+        # Create groups where streak breaks
+        groups = (series != value).cumsum()
+        # Count within each group, but only where series == value
+        streak = series.groupby(groups).cumsum()
+        return streak.where(series == value, 0)
     
     def create_labels(self, data: pd.DataFrame, lookahead: int = 5, threshold: float = 0.002) -> pd.Series:
         """
@@ -175,20 +249,6 @@ class FeatureEngineer:
         labels = (future_close > close * (1 + threshold)).astype(int)
         
         return labels
-    
-    def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
-        """Calculate RSI."""
-        delta = prices.diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-        
-        avg_gain = gain.ewm(span=period, adjust=False).mean()
-        avg_loss = loss.ewm(span=period, adjust=False).mean()
-        
-        rs = avg_gain / avg_loss.replace(0, np.nan)
-        rsi = 100 - (100 / (1 + rs))
-        
-        return rsi.fillna(50)
     
     def _calculate_atr(self, high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
         """Calculate ATR."""
