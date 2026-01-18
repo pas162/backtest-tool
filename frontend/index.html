@@ -725,14 +725,23 @@
             </div>
 
             <div class="status-panel" style="grid-column: span 2;">
-                <h3>📝 Trade Log</h3>
-                <div class="trade-log" id="tradeLog">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3>📝 Trade Log</h3>
+                    <button id="toggleTradeLogBtn"
+                        style="padding: 5px 15px; background: #2962ff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        Show/Hide
+                    </button>
+                </div>
+                <div class="trade-log" id="tradeLog" style="display: none;">
                     <table class="trade-table">
                         <thead>
                             <tr>
                                 <th>Side</th>
+                                <th>Entry Time</th>
                                 <th>Entry</th>
+                                <th>Exit Time</th>
                                 <th>Exit</th>
+                                <th>Hold</th>
                                 <th>PnL %</th>
                                 <th>PnL $</th>
                                 <th>Fee</th>
@@ -1554,6 +1563,9 @@
                 // Render trade markers from backend (instant mode - show all trades)
                 renderTradeMarkers(backendTrades, decisions);
 
+                // Render trade lines
+                renderTradeLines(backendTrades);
+
                 // Update stats from backend results
                 updateStatsFromBackend(data);
 
@@ -1580,7 +1592,7 @@
 
                 // Populate trade log from backend trades
                 backendTrades.forEach(t => {
-                    addTradeLogFromBackend(t);
+                    addTradeToTable(t);
                 });
 
                 // Enable controls
@@ -2186,6 +2198,68 @@
             });
         }
 
+        // Add trade to table with all columns
+        function addTradeToTable(trade) {
+            const tbody = document.getElementById('tradeTableBody');
+            if (!tbody) return;
+
+            // Calculate hold duration
+            const entryTime = new Date(trade.entry_time);
+            const exitTime = new Date(trade.exit_time);
+            const holdMs = exitTime - entryTime;
+            const holdMinutes = Math.floor(holdMs / 60000);
+            const holdHours = Math.floor(holdMinutes / 60);
+            const holdDays = Math.floor(holdHours / 24);
+
+            let holdDuration;
+            if (holdDays > 0) {
+                holdDuration = `${holdDays}d ${holdHours % 24}h`;
+            } else if (holdHours > 0) {
+                holdDuration = `${holdHours}h ${holdMinutes % 60}m`;
+            } else {
+                holdDuration = `${holdMinutes}m`;
+            }
+
+            // Format times
+            const entryTimeStr = entryTime.toLocaleString('en-US', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            const exitTimeStr = exitTime.toLocaleString('en-US', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            const isProfit = trade.pnl > 0;
+            const sideClass = trade.side === 'long' ? 'profit' : 'loss';
+            const pnlClass = isProfit ? 'profit' : 'loss';
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><span class="${sideClass}">${trade.side.toUpperCase()}</span></td>
+                <td>${entryTimeStr}</td>
+                <td>$${trade.entry_price.toFixed(4)}</td>
+                <td>${exitTimeStr}</td>
+                <td>$${trade.exit_price.toFixed(4)}</td>
+                <td>${holdDuration}</td>
+                <td class="${pnlClass}">${isProfit ? '+' : ''}${trade.pnl_pct.toFixed(2)}%</td>
+                <td class="${pnlClass}">${isProfit ? '+' : ''}$${trade.pnl.toFixed(2)}</td>
+                <td>$${(trade.fee || 0).toFixed(2)}</td>
+            `;
+
+            tbody.appendChild(row);
+
+            // Hide "no trades" message
+            const noTradesMsg = document.getElementById('noTradesMsg');
+            if (noTradesMsg) {
+                noTradesMsg.style.display = 'none';
+            }
+        }
+
         // Train ML Model (called from modal)
         async function trainModel() {
             trainConfirmBtn.disabled = true;
@@ -2268,6 +2342,19 @@
                 }
             });
         });
+
+        // Toggle trade log visibility
+        const toggleTradeLogBtn = document.getElementById('toggleTradeLogBtn');
+        const tradeLog = document.getElementById('tradeLog');
+        if (toggleTradeLogBtn && tradeLog) {
+            toggleTradeLogBtn.addEventListener('click', () => {
+                if (tradeLog.style.display === 'none') {
+                    tradeLog.style.display = 'block';
+                } else {
+                    tradeLog.style.display = 'none';
+                }
+            });
+        }
 
         // Initialize
         initChart();
