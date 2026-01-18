@@ -26,13 +26,17 @@ class FastMLAgent(TradingAgent):
     
     def __init__(
         self,
-        model_path: str = "models/trading_model.pkl",
+        model_path: Optional[str] = None,
         buy_threshold: float = 0.55,  # Lowered from 0.6 for more trades
         sell_threshold: float = 0.45,  # Raised from 0.4 for more trades
     ):
         super().__init__()
         
-        self.model_path = Path(model_path)
+        # Get model path from registry if not provided
+        if model_path is None:
+            model_path = self._get_active_model_path()
+        
+        self.model_path = Path(model_path) if model_path else None
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
         
@@ -45,8 +49,18 @@ class FastMLAgent(TradingAgent):
         self._current_bar_index = 0
         
         # Load model
-        if self.model_path.exists():
+        if self.model_path and self.model_path.exists():
             self._load_model()
+    
+    def _get_active_model_path(self) -> Optional[str]:
+        """Get active model path from registry."""
+        try:
+            from backend.ml.model_registry import get_registry
+            registry = get_registry()
+            return registry.get_active_model_path()
+        except Exception:
+            # Fallback to default
+            return "models/trading_model.pkl"
     
     def _load_model(self):
         """Load model from disk."""

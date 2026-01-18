@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Trading Replay</title>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         * {
             margin: 0;
@@ -478,6 +478,14 @@
             
             <div class="modal-row">
                 <div>
+                    <label>Model Name</label>
+                    <div class="hint">Leave empty for auto-generated name</div>
+                </div>
+                <input type="text" id="trainModelName" placeholder="e.g. XRP_aggressive" style="width: 150px;">
+            </div>
+            
+            <div class="modal-row">
+                <div>
                     <label>Symbol</label>
                     <div class="hint">Trading pair to train on</div>
                 </div>
@@ -529,6 +537,21 @@
             <div class="modal-actions">
                 <button class="btn-cancel" id="trainCancelBtn">Cancel</button>
                 <button class="btn-train" id="trainConfirmBtn">🚀 Start Training</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Model Manager Modal -->
+    <div class="modal-overlay" id="modelModal">
+        <div class="modal" style="min-width: 550px;">
+            <h2>📦 Model Manager</h2>
+            
+            <div id="modelList" style="max-height: 400px; overflow-y: auto;">
+                <p style="color: #787b86; text-align: center;">Loading models...</p>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn-cancel" id="modelCloseBtn">Close</button>
             </div>
         </div>
     </div>
@@ -597,9 +620,10 @@
                     <label>Fee %</label>
                     <input type="number" id="tradingFee" value="0.1" min="0" step="0.01" style="width: 75px;">
                 </div>
-                <button class="control-btn" id="trainBtn" style="background: #ff9800;">🧠 Train Model</button>
+                <button class="control-btn" id="trainBtn" style="background: #ff9800;">🧠 Train</button>
+                <button class="control-btn" id="modelBtn" style="background: #9c27b0;">📦 Models</button>
                 <button class="control-btn primary" id="loadBtn">📊 Load Data</button>
-                <span id="modelStatus" style="font-size: 12px; color: #787b86; margin-left: 10px;">No model loaded</span>
+                <span id="modelStatus" style="font-size: 12px; color: #787b86; margin-left: 10px; cursor: pointer;" title="Click to manage models">No model</span>
             </div>
         </div>
 
@@ -729,16 +753,20 @@
         let candleSeries = null;
         let candles = [];
         let decisions = [];
+        let backendTrades = [];       // Trades from backend response
         let currentBar = 0;
         let isPlaying = false;
         let playInterval = null;
         let speed = 100;
         let initialCapital = 100;
+        let currentLeverage = 20;     // Current leverage multiplier
         let equity = 100;
         let position = null;
         let trades = [];
         let markers = [];
         let markersPrimitive = null;  // For V5 markers API
+        let tradeLines = [];          // Price lines for trades
+        let positionLine = null;      // Current position price line
         let equityChart = null;       // Mini equity chart
         let equitySeries = null;      // Equity line series
         let equityData = [];          // Equity curve data points
@@ -748,9 +776,12 @@
         // DOM Elements
         const loadBtn = document.getElementById('loadBtn');
         const trainBtn = document.getElementById('trainBtn');
+        const modelBtn = document.getElementById('modelBtn');
         const trainModal = document.getElementById('trainModal');
+        const modelModal = document.getElementById('modelModal');
         const trainCancelBtn = document.getElementById('trainCancelBtn');
         const trainConfirmBtn = document.getElementById('trainConfirmBtn');
+        const modelCloseBtn = document.getElementById('modelCloseBtn');
         const modelStatus = document.getElementById('modelStatus');
         const playBtn = document.getElementById('playBtn');
         const pauseBtn = document.getElementById('pauseBtn');
@@ -764,11 +795,144 @@
             // Sync symbol from main UI to modal
             document.getElementById('trainSymbol').value = document.getElementById('symbol').value;
             document.getElementById('trainTimeframe').value = document.getElementById('timeframe').value;
+            // Clear name
+            document.getElementById('trainModelName').value = '';
             trainModal.classList.add('active');
         }
 
         function closeTrainModal() {
             trainModal.classList.remove('active');
+        }
+        
+        // Model Manager Modal
+        async function openModelModal() {
+            modelModal.classList.add('active');
+            await loadModelList();
+        }
+        
+        function closeModelModal() {
+            modelModal.classList.remove('active');
+        }
+        
+        // Load and display model list
+        async function loadModelList() {
+            const modelList = document.getElementById('modelList');
+            modelList.innerHTML = '<p style="color: #787b86; text-align: center;">Loading models...</p>';
+            
+            try {
+                const response = await fetch('/api/replay/models');
+                const data = await response.json();
+                
+                if (!data.success || !data.models || data.models.length === 0) {
+                    modelList.innerHTML = '<p style="color: #787b86; text-align: center; padding: 20px;">No models trained yet. Click "🧠 Train" to create one.</p>';
+                    return;
+                }
+                
+                let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+                
+                data.models.forEach(model => {
+                    const isActive = model.is_active;
+                    const acc = (model.metrics.accuracy * 100).toFixed(1);
+                    const prec = (model.metrics.precision * 100).toFixed(1);
+                    const args = model.training_args;
+                    const date = new Date(model.created_at).toLocaleDateString();
+                    
+                    html += `
+                        <div style="background: ${isActive ? '#1a3a2a' : '#2a2e39'}; padding: 12px; border-radius: 8px; border: 1px solid ${isActive ? '#26a69a' : '#363a45'};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-weight: 600; color: #fff;">${model.name}</span>
+                                    ${isActive ? '<span style="background: #26a69a; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px;">ACTIVE</span>' : ''}
+                                </div>
+                                <div style="display: flex; gap: 5px;">
+                                    ${!isActive ? `<button onclick="activateModel('${model.name}')" style="background: #2962ff; color: #fff; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;">Use</button>` : ''}
+                                    <button onclick="deleteModel('${model.name}')" style="background: #ef5350; color: #fff; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;">🗑️</button>
+                                </div>
+                            </div>
+                            <div style="font-size: 11px; color: #787b86; margin-bottom: 6px;">
+                                ${args.symbol} | ${args.timeframe} | ${args.days} days | lookahead=${args.lookahead} | threshold=${(args.threshold * 100).toFixed(1)}%
+                            </div>
+                            <div style="display: flex; gap: 15px; font-size: 12px;">
+                                <span style="color: #26a69a;">Acc: ${acc}%</span>
+                                <span style="color: #ff9800;">Prec: ${prec}%</span>
+                                <span style="color: #787b86;">Samples: ${model.samples}</span>
+                                <span style="color: #787b86;">${date}</span>
+                            </div>
+                            ${model.description ? `<div style="font-size: 11px; color: #9e9e9e; margin-top: 6px; font-style: italic;">${model.description}</div>` : ''}
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                modelList.innerHTML = html;
+                
+            } catch (error) {
+                modelList.innerHTML = `<p style="color: #ef5350; text-align: center;">Error loading models: ${error.message}</p>`;
+            }
+        }
+        
+        // Activate a model
+        async function activateModel(modelName) {
+            try {
+                const response = await fetch(`/api/replay/models/${encodeURIComponent(modelName)}/activate`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    await loadModelList();
+                    updateModelStatus();
+                } else {
+                    alert('Failed to activate model: ' + (data.detail || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        // Delete a model
+        async function deleteModel(modelName) {
+            if (!confirm(`Delete model "${modelName}"? This cannot be undone.`)) return;
+            
+            try {
+                const response = await fetch(`/api/replay/models/${encodeURIComponent(modelName)}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    await loadModelList();
+                    updateModelStatus();
+                } else {
+                    alert('Failed to delete model: ' + (data.detail || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        // Update model status display
+        async function updateModelStatus() {
+            try {
+                const response = await fetch('/api/replay/models');
+                const data = await response.json();
+                
+                if (data.success && data.active_model) {
+                    const model = data.models.find(m => m.name === data.active_model);
+                    if (model) {
+                        const acc = (model.metrics.accuracy * 100).toFixed(0);
+                        const prec = (model.metrics.precision * 100).toFixed(0);
+                        modelStatus.textContent = `✅ ${model.name} (${acc}%/${prec}%)`;
+                        modelStatus.style.color = '#26a69a';
+                        return;
+                    }
+                }
+                modelStatus.textContent = 'No model';
+                modelStatus.style.color = '#787b86';
+            } catch (error) {
+                modelStatus.textContent = 'No model';
+                modelStatus.style.color = '#787b86';
+            }
         }
 
         // Save settings to localStorage
@@ -848,8 +1012,8 @@
                 },
             });
 
-            // Add candlestick series (V5 API)
-            candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+            // Add candlestick series (V4 API)
+            candleSeries = chart.addCandlestickSeries({
                 upColor: '#26a69a',
                 downColor: '#ef5350',
                 borderVisible: false,
@@ -897,7 +1061,7 @@
                 handleScale: false,
             });
 
-            equitySeries = equityChart.addSeries(LightweightCharts.AreaSeries, {
+            equitySeries = equityChart.addAreaSeries({
                 lineColor: '#26a69a',
                 topColor: 'rgba(38, 166, 154, 0.4)',
                 bottomColor: 'rgba(38, 166, 154, 0.0)',
@@ -927,10 +1091,309 @@
             // Update chart data
             equitySeries.setData(equityData);
         }
+        
+        // Load equity curve from backend response
+        function loadEquityCurveFromBackend(equityCurve) {
+            if (!equitySeries || !equityCurve || equityCurve.length === 0) return;
+            
+            // Convert backend equity curve to chart format
+            // Backend format: [{time: ISO string, equity: number}, ...]
+            equityData = equityCurve.map((point, idx) => ({
+                time: idx,  // Use index as time for mini chart
+                value: point.equity
+            }));
+            
+            // Determine final color based on profit/loss
+            const finalEquity = equityCurve[equityCurve.length - 1]?.equity || initialCapital;
+            const isProfit = finalEquity >= initialCapital;
+            
+            equitySeries.applyOptions({
+                lineColor: isProfit ? '#26a69a' : '#ef5350',
+                topColor: isProfit ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)',
+                bottomColor: isProfit ? 'rgba(38, 166, 154, 0.0)' : 'rgba(239, 83, 80, 0.0)',
+            });
+            
+            equitySeries.setData(equityData);
+        }
+        
+        // Update stats panel from backend response
+        function updateStatsFromBackend(data) {
+            document.getElementById('totalTrades').textContent = data.total_trades || 0;
+            
+            if (data.total_trades > 0) {
+                document.getElementById('winRate').textContent = data.win_rate.toFixed(1) + '%';
+                
+                const returnPct = data.return_pct || 0;
+                const pnlEl = document.getElementById('totalPnl');
+                pnlEl.textContent = (returnPct >= 0 ? '+' : '') + '$' + (data.equity - initialCapital).toFixed(2);
+                pnlEl.className = 'position-value ' + (returnPct >= 0 ? 'profit' : 'loss');
+                
+                // Calculate from backend trades
+                const backendTrades = data.trades || [];
+                if (backendTrades.length > 0) {
+                    const pnlValues = backendTrades.map(t => t.pnl_pct);
+                    const bestPnl = Math.max(...pnlValues);
+                    const worstPnl = Math.min(...pnlValues);
+                    document.getElementById('bestTrade').textContent = '+' + bestPnl.toFixed(2) + '%';
+                    document.getElementById('worstTrade').textContent = worstPnl.toFixed(2) + '%';
+                    
+                    const wins = backendTrades.filter(t => t.pnl > 0);
+                    const losses = backendTrades.filter(t => t.pnl <= 0);
+                    
+                    const avgWin = wins.length > 0 ? wins.reduce((sum, t) => sum + t.pnl_pct, 0) / wins.length : 0;
+                    const avgLoss = losses.length > 0 ? losses.reduce((sum, t) => sum + t.pnl_pct, 0) / losses.length : 0;
+                    document.getElementById('avgWin').textContent = '+' + avgWin.toFixed(2) + '%';
+                    document.getElementById('avgLoss').textContent = avgLoss.toFixed(2) + '%';
+                    
+                    // Profit Factor
+                    const grossProfit = wins.reduce((sum, t) => sum + t.pnl, 0);
+                    const grossLoss = Math.abs(losses.reduce((sum, t) => sum + t.pnl, 0));
+                    const profitFactor = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : grossProfit > 0 ? '∞' : '-';
+                    document.getElementById('profitFactor').textContent = profitFactor;
+                    
+                    // Max Drawdown
+                    let peak = initialCapital;
+                    let maxDD = 0;
+                    let runningEquity = initialCapital;
+                    backendTrades.forEach(t => {
+                        runningEquity += t.pnl;
+                        if (runningEquity > peak) peak = runningEquity;
+                        const dd = (peak - runningEquity) / peak * 100;
+                        if (dd > maxDD) maxDD = dd;
+                    });
+                    document.getElementById('maxDrawdown').textContent = '-' + maxDD.toFixed(2) + '%';
+                    
+                    // Win Streak
+                    let maxStreak = 0;
+                    let currentStreak = 0;
+                    backendTrades.forEach(t => {
+                        if (t.pnl > 0) {
+                            currentStreak++;
+                            if (currentStreak > maxStreak) maxStreak = currentStreak;
+                        } else {
+                            currentStreak = 0;
+                        }
+                    });
+                    document.getElementById('winStreak').textContent = maxStreak;
+                    
+                    // Win/Loss Bar
+                    const winPortion = (data.wins / data.total_trades * 100).toFixed(1);
+                    document.getElementById('winPortion').style.width = winPortion + '%';
+                }
+            }
+        }
+        
+        // Add trade to log table from backend data
+        function addTradeLogFromBackend(trade) {
+            const noTradesMsg = document.getElementById('noTradesMsg');
+            if (noTradesMsg) noTradesMsg.style.display = 'none';
 
-        // Update markers on chart (V5 API)
+            const tbody = document.getElementById('tradeTableBody');
+            if (!tbody) return;
+            
+            const row = document.createElement('tr');
+            const isProfit = trade.pnl > 0;
+            const isLong = trade.side === 'long';
+            const sideClass = isLong ? 'side-long' : 'side-short';
+            const pnlClass = isProfit ? 'pnl-positive' : 'pnl-negative';
+            const sideText = isLong ? 'LONG' : 'SHORT';
+            
+            // Calculate fee (approx)
+            const fee = Math.abs(trade.pnl * 0.01);  // Estimated from backend commission
+
+            row.innerHTML = `
+                <td class="${sideClass}">${sideText}</td>
+                <td>$${trade.entry_price.toFixed(4)}</td>
+                <td>$${trade.exit_price.toFixed(4)}</td>
+                <td class="${pnlClass}">${isProfit ? '+' : ''}${trade.pnl_pct.toFixed(2)}%</td>
+                <td class="${pnlClass}">${isProfit ? '+' : ''}$${trade.pnl.toFixed(2)}</td>
+                <td>-</td>
+            `;
+            tbody.appendChild(row);
+        }
+
+        // Update markers on chart (V4 API)
         function updateMarkers() {
-            // Markers disabled due to API incompatibility - check Trade Log panel
+            if (!candleSeries || markers.length === 0) return;
+            
+            // Sort markers by time (required by Lightweight Charts)
+            const sortedMarkers = [...markers].sort((a, b) => a.time - b.time);
+            
+            // Merge markers with same timestamp (can only have 1 marker per candle)
+            const mergedMarkers = [];
+            const seenTimes = new Set();
+            
+            sortedMarkers.forEach(marker => {
+                if (!seenTimes.has(marker.time)) {
+                    seenTimes.add(marker.time);
+                    mergedMarkers.push(marker);
+                } else {
+                    // Append text to existing marker at same time
+                    const existing = mergedMarkers.find(m => m.time === marker.time);
+                    if (existing) {
+                        existing.text = existing.text + ' | ' + marker.text;
+                    }
+                }
+            });
+            
+            // Use setMarkers API (V4)
+            candleSeries.setMarkers(mergedMarkers);
+        }
+        
+        // Render all trade markers from backend response
+        function renderTradeMarkers(trades, decisionLog) {
+            if (!candleSeries || !trades || trades.length === 0) return;
+            
+            markers = [];
+            
+            // Build valid candle times set for validation
+            const validTimes = new Set(candles.map(c => c.time));
+            
+            // Parse trades and create entry/exit markers
+            trades.forEach(trade => {
+                let entryTs = parseTimeToUnix(trade.entry_time);
+                let exitTs = parseTimeToUnix(trade.exit_time);
+                const isProfit = trade.pnl > 0;
+                const isLong = trade.side === 'long';
+                
+                // Find closest valid candle time if exact match not found
+                entryTs = findClosestCandleTime(entryTs, validTimes);
+                exitTs = findClosestCandleTime(exitTs, validTimes);
+                
+                if (!entryTs || !exitTs) return;  // Skip if no valid times
+                
+                // Entry marker
+                markers.push({
+                    time: entryTs,
+                    position: isLong ? 'belowBar' : 'aboveBar',
+                    color: isLong ? '#26a69a' : '#ef5350',
+                    shape: isLong ? 'arrowUp' : 'arrowDown',
+                    text: isLong ? 'BUY' : 'SHORT'
+                });
+                
+                // Exit marker with PnL
+                const pnlText = (isProfit ? '+' : '') + trade.pnl_pct.toFixed(1) + '%';
+                markers.push({
+                    time: exitTs,
+                    position: isLong ? 'aboveBar' : 'belowBar',
+                    color: isProfit ? '#26a69a' : '#ef5350',
+                    shape: isLong ? 'arrowDown' : 'arrowUp',
+                    text: pnlText
+                });
+            });
+            
+            updateMarkers();
+            
+            // Draw trade lines connecting entry to exit
+            renderTradeLines(trades);
+        }
+        
+        // Find closest candle time to target timestamp
+        function findClosestCandleTime(targetTs, validTimes) {
+            if (validTimes.has(targetTs)) return targetTs;
+            
+            // Find closest
+            let closest = null;
+            let minDiff = Infinity;
+            validTimes.forEach(t => {
+                const diff = Math.abs(t - targetTs);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closest = t;
+                }
+            });
+            return closest;
+        }
+        
+        // Draw lines connecting entry to exit for each trade
+        function renderTradeLines(trades) {
+            if (!chart || !trades || trades.length === 0) return;
+            
+            // Clear existing trade lines
+            clearTradeLines();
+            
+            // Build valid candle times set
+            const validTimes = new Set(candles.map(c => c.time));
+            
+            trades.forEach((trade, idx) => {
+                const isProfit = trade.pnl > 0;
+                const lineColor = isProfit ? 'rgba(38, 166, 154, 0.8)' : 'rgba(239, 83, 80, 0.8)';
+                
+                let entryTs = parseTimeToUnix(trade.entry_time);
+                let exitTs = parseTimeToUnix(trade.exit_time);
+                
+                // Find closest valid candle times
+                entryTs = findClosestCandleTime(entryTs, validTimes);
+                exitTs = findClosestCandleTime(exitTs, validTimes);
+                
+                if (!entryTs || !exitTs) return;
+                
+                // Create a line series for this trade
+                const lineSeries = chart.addLineSeries({
+                    color: lineColor,
+                    lineWidth: 2,
+                    lineStyle: LightweightCharts.LineStyle.Solid,
+                    crosshairMarkerVisible: false,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                });
+                
+                // Set data: entry point → exit point
+                lineSeries.setData([
+                    { time: entryTs, value: trade.entry_price },
+                    { time: exitTs, value: trade.exit_price }
+                ]);
+                
+                tradeLines.push(lineSeries);
+            });
+        }
+        
+        // Clear all trade lines
+        function clearTradeLines() {
+            tradeLines.forEach(series => {
+                try {
+                    chart.removeSeries(series);
+                } catch (e) {}
+            });
+            tradeLines = [];
+        }
+        
+        // Show current position indicator on chart
+        function updatePositionIndicator(pos, currentPrice) {
+            // Remove existing position line
+            if (positionLine) {
+                try {
+                    candleSeries.removePriceLine(positionLine);
+                } catch (e) {}
+                positionLine = null;
+            }
+            
+            if (!pos || !candleSeries) return;
+            
+            const isLong = pos.side === 'LONG';
+            const unrealizedPnl = isLong
+                ? (currentPrice - pos.entryPrice) / pos.entryPrice * 100
+                : (pos.entryPrice - currentPrice) / pos.entryPrice * 100;
+            const isProfit = unrealizedPnl > 0;
+            
+            // Create position entry line with PnL label
+            positionLine = candleSeries.createPriceLine({
+                price: pos.entryPrice,
+                color: isProfit ? '#26a69a' : '#ef5350',
+                lineWidth: 2,
+                lineStyle: LightweightCharts.LineStyle.Solid,
+                axisLabelVisible: true,
+                title: `${isLong ? '🟢 LONG' : '🔴 SHORT'} @ ${pos.entryPrice.toFixed(4)} (${isProfit ? '+' : ''}${unrealizedPnl.toFixed(2)}%)`,
+            });
+        }
+        
+        // Parse ISO time string or Unix timestamp to Unix seconds
+        function parseTimeToUnix(timeValue) {
+            if (typeof timeValue === 'number') {
+                return timeValue;
+            }
+            // ISO string
+            return Math.floor(new Date(timeValue).getTime() / 1000);
         }
 
         // Load data
@@ -967,6 +1430,7 @@
                 // Store data
                 candles = data.candles || [];
                 decisions = data.decision_log || [];
+                backendTrades = data.trades || [];  // Store backend trades for markers
                 initialCapital = parseFloat(document.getElementById('capital').value);
                 currentLeverage = parseFloat(document.getElementById('leverage').value);
                 tradeSize = parseFloat(document.getElementById('positionSize').value) || 2;
@@ -985,28 +1449,47 @@
                 // Initialize charts
                 initChart();
                 initEquityChart();
+                
+                // Display all candles immediately
+                candleSeries.setData(candles);
+                
+                // Render trade markers from backend (instant mode - show all trades)
+                renderTradeMarkers(backendTrades, decisions);
+                
+                // Update stats from backend results
+                updateStatsFromBackend(data);
 
-                // Add initial equity point
-                equityData = [{ time: 0, value: initialCapital }];
+                // Load equity curve from backend
+                loadEquityCurveFromBackend(data.equity_curve || []);
 
                 // Update UI
                 totalBarsEl.textContent = candles.length;
-                currentBarEl.textContent = '0';
-                progressFill.style.width = '0%';
+                currentBarEl.textContent = candles.length;  // All bars loaded
+                progressFill.style.width = '100%';
+                
+                // Update equity from backend
+                equity = data.equity || initialCapital;
                 updateEquityDisplay();
                 updatePositionDisplay();
-                updateStatsDisplay();
-                // Reset trade table (keep structure, clear rows)
+                
+                // Reset trade table and populate from backend
                 const tradeTableBody = document.getElementById('tradeTableBody');
                 if (tradeTableBody) tradeTableBody.innerHTML = '';
                 const noTradesMsg = document.getElementById('noTradesMsg');
-                if (noTradesMsg) noTradesMsg.style.display = 'block';
+                if (noTradesMsg && backendTrades.length > 0) {
+                    noTradesMsg.style.display = 'none';
+                }
+                
+                // Populate trade log from backend trades
+                backendTrades.forEach(t => {
+                    addTradeLogFromBackend(t);
+                });
 
                 // Enable controls
                 playBtn.disabled = false;
                 resetBtn.disabled = false;
 
-                loadBtn.textContent = '✅ Loaded ' + candles.length + ' bars';
+                loadBtn.textContent = '✅ ' + candles.length + ' bars, ' + backendTrades.length + ' trades';
 
             } catch (error) {
                 alert('Error: ' + error.message);
@@ -1016,7 +1499,7 @@
             }
         }
 
-        // Play replay
+        // Play replay (scroll through already loaded data)
         function play() {
             if (isPlaying) return;
             isPlaying = true;
@@ -1029,21 +1512,19 @@
                     return;
                 }
 
-                // Add candle
                 const candle = candles[currentBar];
-                candleSeries.update({
-                    time: candle.time,
-                    open: candle.open,
-                    high: candle.high,
-                    low: candle.low,
-                    close: candle.close
-                });
+                
+                // Scroll chart to current bar (data already loaded)
+                chart.timeScale().scrollToPosition(-candles.length + currentBar + 10, false);
 
                 // Check for decision at this bar (match by bar index, not timestamp)
                 const decision = decisions.find(d => d.bar === currentBar);
 
                 if (decision && decision.decision !== 'HOLD') {
                     processDecision(decision, candle);
+                } else if (position) {
+                    // Update position indicator with current price even without decision
+                    updatePositionIndicator(position, candle.close);
                 }
 
                 // Update progress
@@ -1074,6 +1555,10 @@
             markers = [];
             equity = initialCapital;
 
+            // Clear trade lines and position indicator
+            clearTradeLines();
+            updatePositionIndicator(null, 0);
+            
             initChart();
 
             currentBarEl.textContent = '0';
@@ -1125,8 +1610,6 @@
                         side: 'LONG',
                         entryPrice: price,
                         entryTime: new Date(decision.time),
-                        entryPrice: price,
-                        entryTime: new Date(decision.time),
                         size: currentLeverage
                     };
 
@@ -1136,9 +1619,12 @@
                         position: 'belowBar',
                         color: '#26a69a',
                         shape: 'arrowUp',
-                        text: 'BUY'
+                        text: 'BUY @ ' + price.toFixed(4)
                     });
                     updateMarkers();
+                    
+                    // Show position indicator
+                    updatePositionIndicator(position, price);
 
                     // Entry will show in table when trade closes
                     updatePositionDisplay();
@@ -1149,8 +1635,6 @@
                         side: 'SHORT',
                         entryPrice: price,
                         entryTime: new Date(decision.time),
-                        entryPrice: price,
-                        entryTime: new Date(decision.time),
                         size: currentLeverage
                     };
 
@@ -1159,9 +1643,12 @@
                         position: 'aboveBar',
                         color: '#ef5350',
                         shape: 'arrowDown',
-                        text: 'SHORT'
+                        text: 'SHORT @ ' + price.toFixed(4)
                     });
                     updateMarkers();
+                    
+                    // Show position indicator
+                    updatePositionIndicator(position, price);
 
                     // Entry will show in table when trade closes
                     updatePositionDisplay();
@@ -1197,7 +1684,7 @@
                         position: position.side === 'LONG' ? 'aboveBar' : 'belowBar',
                         color: isProfit ? '#26a69a' : '#ef5350',
                         shape: position.side === 'LONG' ? 'arrowDown' : 'arrowUp',
-                        text: (isProfit ? '+' : '') + leveragedPnlPct.toFixed(1) + '%'
+                        text: (isProfit ? '+' : '') + leveragedPnlPct.toFixed(1) + '% ($' + pnlDollar.toFixed(2) + ')'
                     });
                     updateMarkers();
 
@@ -1213,10 +1700,18 @@
                     // Add to trade log table
                     addTradeLog(trades[trades.length - 1]);
 
+                    // Clear position indicator
+                    updatePositionIndicator(null, price);
+                    
                     position = null;
                     updateEquityDisplay();
                     updatePositionDisplay();
                     updateStatsDisplay();
+                }
+                
+                // Update position indicator with current price during playback
+                if (position) {
+                    updatePositionIndicator(position, candle.close);
                 }
             } catch (err) {
                 console.error('[TRADE ERROR]', err, decision);
@@ -1372,6 +1867,7 @@
             modelStatus.textContent = 'Training...';
             modelStatus.style.color = '#ff9800';
 
+            const modelName = document.getElementById('trainModelName').value.trim();
             const symbol = document.getElementById('trainSymbol').value;
             const timeframe = document.getElementById('trainTimeframe').value;
             const days = parseInt(document.getElementById('trainDays').value) || 90;
@@ -1387,7 +1883,8 @@
                         timeframe: timeframe,
                         days: days,
                         lookahead: lookahead,
-                        threshold: threshold
+                        threshold: threshold,
+                        model_name: modelName
                     })
                 });
 
@@ -1397,10 +1894,9 @@
                     const acc = (data.metrics.accuracy * 100).toFixed(1);
                     const precision = (data.metrics.precision * 100).toFixed(1);
                     closeTrainModal();
-                    alert(`✅ Model trained successfully!\n\nSymbol: ${symbol}\nTimeframe: ${timeframe}\nDays: ${days}\nSamples: ${data.samples}\n\nAccuracy: ${acc}%\nPrecision: ${precision}%`);
+                    alert(`✅ Model "${data.model_name}" trained!\n\nSymbol: ${symbol}\nTimeframe: ${timeframe}\nDays: ${days}\nSamples: ${data.samples}\n\nAccuracy: ${acc}%\nPrecision: ${precision}%`);
                     trainBtn.style.background = '#26a69a';
-                    modelStatus.textContent = `✅ ${symbol} ${timeframe} (${acc}% acc)`;
-                    modelStatus.style.color = '#26a69a';
+                    await updateModelStatus();
                 } else {
                     throw new Error(data.detail || 'Training failed');
                 }
@@ -1417,11 +1913,17 @@
         // Event listeners
         loadBtn.addEventListener('click', loadData);
         trainBtn.addEventListener('click', openTrainModal);
+        modelBtn.addEventListener('click', openModelModal);
         trainCancelBtn.addEventListener('click', closeTrainModal);
         trainConfirmBtn.addEventListener('click', trainModel);
+        modelCloseBtn.addEventListener('click', closeModelModal);
         trainModal.addEventListener('click', (e) => {
             if (e.target === trainModal) closeTrainModal();
         });
+        modelModal.addEventListener('click', (e) => {
+            if (e.target === modelModal) closeModelModal();
+        });
+        modelStatus.addEventListener('click', openModelModal);
         playBtn.addEventListener('click', play);
         pauseBtn.addEventListener('click', pause);
         resetBtn.addEventListener('click', reset);
@@ -1443,6 +1945,7 @@
 
         // Initialize
         initChart();
+        updateModelStatus();  // Load active model info on startup
     </script>
 </body>
 

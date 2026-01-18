@@ -138,6 +138,7 @@ class TrainRequest(BaseModel):
     days: int = 90
     lookahead: int = 5
     threshold: float = 0.002
+    model_name: str = ""  # Custom model name (auto-generated if empty)
 
 
 @router.post("/train")
@@ -152,8 +153,10 @@ async def train_ml_model(request: TrainRequest):
     
     try:
         from backend.ml.trainer import ModelTrainer
+        from backend.ml.model_registry import get_registry
         
         trainer = ModelTrainer()
+        registry = get_registry()
         
         # Prepare data
         X, y = await trainer.prepare_data(
@@ -167,15 +170,116 @@ async def train_ml_model(request: TrainRequest):
         # Train model
         metrics = trainer.train(X, y)
         
-        # Save model
-        model_path = trainer.save_model("trading_model")
+        # Generate model name if not provided
+        model_name = request.model_name.strip()
+        if not model_name:
+            model_name = f"{request.symbol}_{request.timeframe}_{request.days}d"
+        
+        # Save model with unique name
+        model_filename = model_name.replace(" ", "_").lower()
+        model_path = trainer.save_model(model_filename)
+        
+        # Auto-generate description from training args and metrics
+        acc_pct = metrics.get("accuracy", 0) * 100
+        prec_pct = metrics.get("precision", 0) * 100
+        recall_pct = metrics.get("recall", 0) * 100
+        threshold_pct = request.threshold * 100
+        
+        description = (
+            f"Trained on {request.symbol} {request.timeframe} with {request.days} days data. "
+            f"Lookahead: {request.lookahead} bars, Threshold: {threshold_pct:.1f}%. "
+            f"Results: Acc={acc_pct:.1f}%, Prec={prec_pct:.1f}%, Recall={recall_pct:.1f}%"
+        )
+        
+        # Register model
+        model_info = registry.register_model(
+            name=model_name,
+            model_path=model_path,
+            metrics=metrics,
+            training_args={
+                "symbol": request.symbol,
+                "timeframe": request.timeframe,
+                "days": request.days,
+                "lookahead": request.lookahead,
+                "threshold": request.threshold,
+            },
+            description=description,
+        )
+        
+        # Set as active model
+        registry.set_active_model(model_info["name"])
         
         return {
             "success": True,
+            "model_name": model_info["name"],
             "model_path": model_path,
             "metrics": metrics,
             "samples": len(X),
         }
     
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/models")
+async def list_models():
+    """Get list of all trained models."""
+    try:
+        from backend.ml.model_registry import get_registry
+        registry = get_registry()
+        models = registry.list_models()
+        active = registry.get_active_model()
+        
+        return {
+            "success": True,
+            "models": models,
+            "active_model": active["name"] if active else None,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/models/{model_name}/activate")
+async def activate_model(model_name: str):
+    """Set a model as the active model."""
+    try:
+        from backend.ml.model_registry import get_registry
+        registry = get_registry()
+        
+        if not registry.set_active_model(model_name):
+            raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+        
+        # Reload the agent with new model
+        if HAS_ML_AGENT:
+            from backend.ml.fast_agent import FastMLAgent
+            # Force reload of model
+            agent = FastMLAgent(model_path=registry.get_active_model_path())
+        
+        return {
+            "success": True,
+            "active_model": model_name,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/models/{model_name}")
+async def delete_model(model_name: str):
+    """Delete a trained model."""
+    try:
+        from backend.ml.model_registry import get_registry
+        registry = get_registry()
+        
+        if not registry.delete_model(model_name):
+            raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+        
+        return {
+            "success": True,
+            "message": f"Model '{model_name}' deleted",
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
