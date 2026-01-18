@@ -2027,6 +2027,22 @@
                     updateStatsProgressive(completedTrades);
                 }
 
+                // Track current open position
+                const openTrade = backendTrades.find(t => {
+                    const entryTs = parseTimeToUnix(t.entry_time);
+                    const exitTs = parseTimeToUnix(t.exit_time);
+                    return entryTs <= currentTime && exitTs > currentTime;
+                });
+
+                if (openTrade) {
+                    // Update position display with current trade
+                    const currentPrice = candles[currentBar].close;
+                    updateCurrentPosition(openTrade, currentPrice);
+                } else {
+                    // Clear position display
+                    clearCurrentPosition();
+                }
+
                 // Update equity chart progressively
                 if (equitySeries && completedTrades.length > 0) {
                     const lastTrade = completedTrades[completedTrades.length - 1];
@@ -2076,7 +2092,7 @@
 
             // Clear current position
             position = null;
-            updatePositionDisplay();
+            clearCurrentPosition();
 
             // Clear statistics
             document.getElementById('totalTrades').textContent = '0';
@@ -2153,6 +2169,46 @@
                 else break;
             }
             document.getElementById('winStreak').textContent = winStreak;
+        }
+
+        // Update current position display
+        function updateCurrentPosition(trade, currentPrice) {
+            const positionInfoEl = document.getElementById('positionInfo');
+            if (!positionInfoEl) return;
+
+            const isLong = trade.side === 'long';
+            const entryPrice = trade.entry_price;
+
+            // Calculate unrealized PnL
+            const priceChange = isLong ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+            const pnlPct = (priceChange / entryPrice) * 100 * 50; // 50x leverage
+
+            const sideColor = isLong ? '#26a69a' : '#ef5350';
+            const pnlColor = pnlPct >= 0 ? '#26a69a' : '#ef5350';
+
+            positionInfoEl.innerHTML = `
+                <div style="color: ${sideColor}; font-weight: bold; font-size: 14px;">
+                    ${isLong ? '🟢 LONG' : '🔴 SHORT'}
+                </div>
+                <div style="color: #b2b5be; font-size: 12px; margin-top: 4px;">
+                    Entry: $${entryPrice.toFixed(5)}
+                </div>
+                <div style="color: ${pnlColor}; font-weight: bold; margin-top: 4px;">
+                    ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%
+                </div>
+            `;
+        }
+
+        // Clear current position display
+        function clearCurrentPosition() {
+            const positionInfoEl = document.getElementById('positionInfo');
+            if (!positionInfoEl) return;
+
+            positionInfoEl.innerHTML = `
+                <div style="color: #787b86; font-size: 14px;">
+                    No Position
+                </div>
+            `;
         }
 
         // Update visible trade lines based on current time
