@@ -136,8 +136,9 @@ class ReplayEngine:
         self._running = True
         self.state.current_bar = start_bar
         
-        # Minimum warmup period for indicators
-        warmup = min(50, len(self.data) // 10)
+        # Minimum warmup period for indicators and ML features
+        # Need more candles for smaller timeframes (1m, 5m)
+        warmup = min(500, len(self.data) // 5)  # At least 500 candles or 20% of data
         
         for i in range(max(start_bar, warmup), len(self.data)):
             if not self._running:
