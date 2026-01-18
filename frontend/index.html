@@ -1576,7 +1576,7 @@
                 updateStatsFromBackend(data);
 
                 // Load equity curve from backend
-                loadEquityCurveFromBackend(data.equity_curve || []);
+                loadEquityCurveFromBackend(data.equity_curve || [], backendTrades);
 
                 // Update UI
                 totalBarsEl.textContent = candles.length;
@@ -2043,11 +2043,23 @@
                     clearCurrentPosition();
                 }
 
-                // Update equity chart progressively
-                if (equitySeries && completedTrades.length > 0) {
-                    const lastTrade = completedTrades[completedTrades.length - 1];
-                    const exitTs = parseTimeToUnix(lastTrade.exit_time);
-                    equitySeries.update({ time: exitTs, value: currentEquity });
+                // Update equity chart progressively with full history
+                if (equitySeries && candles && candles.length > 0) {
+                    // Always start with initial capital at first candle
+                    const equityCurve = [{ time: candles[0].time, value: initialCapital }];
+
+                    if (completedTrades.length > 0) {
+                        // Build complete equity curve from all completed trades
+                        let runningEquity = initialCapital;
+
+                        completedTrades.forEach(trade => {
+                            runningEquity += (trade.pnl || 0);
+                            const exitTs = parseTimeToUnix(trade.exit_time);
+                            equityCurve.push({ time: exitTs, value: runningEquity });
+                        });
+                    }
+
+                    equitySeries.setData(equityCurve);
                 }
 
                 // Update progress
@@ -2209,6 +2221,31 @@
                     No Position
                 </div>
             `;
+        }
+
+        // Load equity curve from backend with starting point
+        function loadEquityCurveFromBackend(backendEquityCurve, trades) {
+            if (!equitySeries || !candles || candles.length === 0) {
+                return;
+            }
+
+            // Always start with initial capital at first candle
+            const startTime = candles[0].time;
+            const equityCurve = [{ time: startTime, value: initialCapital }];
+
+            // ALWAYS build from trades to ensure correct starting point
+            // Backend equity curve doesn't start at initial capital
+            if (trades && trades.length > 0) {
+                let runningEquity = initialCapital;
+                trades.forEach(trade => {
+                    runningEquity += (trade.pnl || 0);
+                    const exitTs = parseTimeToUnix(trade.exit_time);
+                    equityCurve.push({ time: exitTs, value: runningEquity });
+                });
+                console.log(`[Equity] Built curve from ${trades.length} trades, starting at $${initialCapital}`);
+            }
+
+            equitySeries.setData(equityCurve);
         }
 
         // Update visible trade lines based on current time
