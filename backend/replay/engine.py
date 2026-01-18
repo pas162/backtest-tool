@@ -234,42 +234,26 @@ class ReplayEngine:
             return
         
         if decision == Decision.BUY:
+            # Only open LONG if flat (no position)
             if self.state.position is None:
-                # Open long
                 self.state.position = Position(
                     side="long",
                     entry_price=price,
                     entry_time=time,
                     size=self.position_size,
                 )
-            elif self.state.position.side == "short":
-                # Close short, open long
-                self._close_position(price, time)
-                self.state.position = Position(
-                    side="long",
-                    entry_price=price,
-                    entry_time=time,
-                    size=self.position_size,
-                )
+            # Ignore BUY if already in a position (agent should CLOSE first)
         
         elif decision == Decision.SELL:
+            # Only open SHORT if flat (no position)
             if self.state.position is None:
-                # Open short
                 self.state.position = Position(
                     side="short",
                     entry_price=price,
                     entry_time=time,
                     size=self.position_size,
                 )
-            elif self.state.position.side == "long":
-                # Close long, open short
-                self._close_position(price, time)
-                self.state.position = Position(
-                    side="short",
-                    entry_price=price,
-                    entry_time=time,
-                    size=self.position_size,
-                )
+            # Ignore SELL if already in a position (agent should CLOSE first)
         
         elif decision == Decision.CLOSE:
             if self.state.position:

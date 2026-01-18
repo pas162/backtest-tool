@@ -132,21 +132,44 @@ class FastMLAgent(TradingAgent):
         prob = self._all_predictions[bar_position]
         prob_up = prob[1]
         
-        # Make decision (Futures Logic: Long & Short)
-        if prob_up >= self.buy_threshold:
-            if self._position != "long":
-                self._last_reasoning = f"ML BUY (Long): prob_up={prob_up:.2f}"
+        # Decision logic with proper position management
+        # If we have a position, check if we should close it
+        if self._position is not None:
+            # Close LONG if probability drops below neutral zone
+            if self._position == "long" and prob_up < 0.5:
+                self._last_reasoning = f"CLOSE LONG: prob_up={prob_up:.2f} (reversal)"
+                self._position = None
+                return Decision.CLOSE
+            
+            # Close SHORT if probability rises above neutral zone
+            elif self._position == "short" and prob_up > 0.5:
+                self._last_reasoning = f"CLOSE SHORT: prob_up={prob_up:.2f} (reversal)"
+                self._position = None
+                return Decision.CLOSE
+            
+            # Hold position if still in favorable zone
+            else:
+                self._last_reasoning = f"HOLD {self._position.upper()}: prob_up={prob_up:.2f}"
+                return Decision.HOLD
+        
+        # If flat, check if we should open a position
+        else:
+            # Open LONG if strong bullish signal
+            if prob_up >= self.buy_threshold:
+                self._last_reasoning = f"OPEN LONG: prob_up={prob_up:.2f}"
                 self._position = "long"
                 return Decision.BUY
-        
-        elif prob_up <= self.sell_threshold:
-            if self._position != "short":
-                self._last_reasoning = f"ML SELL (Short): prob_up={prob_up:.2f}"
+            
+            # Open SHORT if strong bearish signal
+            elif prob_up <= self.sell_threshold:
+                self._last_reasoning = f"OPEN SHORT: prob_up={prob_up:.2f}"
                 self._position = "short"
                 return Decision.SELL
-        
-        self._last_reasoning = f"HOLD: prob_up={prob_up:.2f}"
-        return Decision.HOLD
+            
+            # Stay flat if no strong signal
+            else:
+                self._last_reasoning = f"FLAT: prob_up={prob_up:.2f} (neutral)"
+                return Decision.HOLD
     
     @property
     def is_model_loaded(self) -> bool:
