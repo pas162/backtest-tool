@@ -261,8 +261,6 @@ class ReplayEngine:
         if decision == Decision.BUY:
             # Only open LONG if flat (no position)
             if self.state.position is None:
-                # Debug: Print actual candle data at entry
-                print(f"🟢 LONG ENTRY at {time}: price={price}, candle_close={price}")
                 self.state.position = Position(
                     side="long",
                     entry_price=price,
@@ -275,8 +273,6 @@ class ReplayEngine:
         elif decision == Decision.SELL:
             # Only open SHORT if flat (no position)
             if self.state.position is None:
-                # Debug: Print actual candle data at entry
-                print(f"🔴 SHORT ENTRY at {time}: price={price}, candle_close={price}")
                 self.state.position = Position(
                     side="short",
                     entry_price=price,
@@ -306,6 +302,17 @@ class ReplayEngine:
         # Calculate PnL percentage (relative to capital)
         pnl_pct = (pnl_dollars / self.initial_capital) * 100
         
+        # Debug logging
+        print(f"💰 CLOSE {pos.side.upper()} at {time}:")
+        print(f"   Entry: ${pos.entry_price}, Exit: ${price}")
+        print(f"   Position size: ${pos.size}, Leverage: {pos.leverage}x")
+        print(f"   Leveraged value: ${leveraged_value}")
+        print(f"   Commission rate: {self.commission}")
+        print(f"   Commission cost: ${commission_cost}")
+        print(f"   PnL (before fee): ${pnl_dollars + commission_cost:.2f}")
+        print(f"   PnL (after fee): ${pnl_dollars:.2f}")
+        print(f"   PnL %: {pnl_pct:.2f}% (relative to initial capital ${self.initial_capital})")
+        
         trade = Trade(
             side=pos.side,
             entry_price=pos.entry_price,
@@ -316,6 +323,7 @@ class ReplayEngine:
             pnl_pct=pnl_pct,
             fee=commission_cost,
         )
+        print(f"   Trade object fee: ${trade.fee}")
         self.state.trades.append(trade)
         self.state.equity += pnl_dollars
         
@@ -365,6 +373,7 @@ class ReplayEngine:
             "exit_time": trade.exit_time.isoformat() if hasattr(trade.exit_time, 'isoformat') else str(trade.exit_time),
             "pnl": trade.pnl,
             "pnl_pct": trade.pnl_pct,
+            "fee": trade.fee,
         }
     
     def _log_to_dict(self, log: DecisionLog) -> dict:
