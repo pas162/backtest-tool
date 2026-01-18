@@ -1504,7 +1504,8 @@
                 start_date: document.getElementById('startDate').value,
                 end_date: document.getElementById('endDate').value,
                 initial_capital: parseFloat(document.getElementById('capital').value),
-                position_size: parseFloat(document.getElementById('leverage').value),
+                position_size: parseFloat(document.getElementById('positionSize').value) || 2,
+                leverage: parseFloat(document.getElementById('leverage').value) || 1,
                 speed: 0
             };
 
@@ -1987,6 +1988,34 @@
                 // TODO: Fix progressive line rendering - commented out for now
                 // updateVisibleTradeLines(currentTime);
 
+                // Progressive updates for equity, position, stats
+
+                // Filter trades that have completed up to current time
+                const completedTrades = backendTrades.filter(t => {
+                    const exitTs = parseTimeToUnix(t.exit_time);
+                    return exitTs <= currentTime;
+                });
+
+                // Update equity based on completed trades
+                let currentEquity = initialCapital;
+                completedTrades.forEach(t => {
+                    currentEquity += (t.pnl || 0);
+                });
+                equity = currentEquity;
+                updateEquityDisplay();
+
+                // Update statistics progressively
+                if (completedTrades.length > 0) {
+                    updateStatsProgressive(completedTrades);
+                }
+
+                // Update equity chart progressively
+                if (equitySeries && completedTrades.length > 0) {
+                    const lastTrade = completedTrades[completedTrades.length - 1];
+                    const exitTs = parseTimeToUnix(lastTrade.exit_time);
+                    equitySeries.update({ time: exitTs, value: currentEquity });
+                }
+
                 // Update progress
                 currentBar++;
                 currentBarEl.textContent = currentBar;
@@ -2023,8 +2052,89 @@
             // Clear trade lines
             clearTradeLines();
 
+            // Reset equity to initial capital
+            equity = initialCapital;
+            updateEquityDisplay();
+
+            // Clear current position
+            position = null;
+            updatePositionDisplay();
+
+            // Clear statistics
+            document.getElementById('totalTrades').textContent = '0';
+            document.getElementById('winRate').textContent = '0.0%';
+            document.getElementById('totalPnl').textContent = '$0.00';
+            document.getElementById('maxDrawdown').textContent = '0.00%';
+            document.getElementById('bestTrade').textContent = '+0.00%';
+            document.getElementById('worstTrade').textContent = '0.00%';
+            document.getElementById('avgWin').textContent = '+0.00%';
+            document.getElementById('avgLoss').textContent = '0.00%';
+            document.getElementById('profitFactor').textContent = '0.00';
+            document.getElementById('winStreak').textContent = '0';
+
+            // Clear trade log
+            const tradeTableBody = document.getElementById('tradeTableBody');
+            if (tradeTableBody) {
+                tradeTableBody.innerHTML = '';
+            }
+            // Clear equity chart and set starting point
+            if (equitySeries && candles && candles.length > 0) {
+                const startTime = candles[0].time;
+                equitySeries.setData([{ time: startTime, value: initialCapital }]);
+            }
+
             playBtn.disabled = false;
             resetBtn.disabled = false;
+        }
+
+        // Update statistics progressively based on completed trades
+        function updateStatsProgressive(trades) {
+            if (!trades || trades.length === 0) return;
+
+            const wins = trades.filter(t => t.pnl > 0);
+            const losses = trades.filter(t => t.pnl < 0);
+
+            // Total trades
+            document.getElementById('totalTrades').textContent = trades.length;
+
+            // Win rate
+            const winRate = trades.length > 0 ? (wins.length / trades.length * 100) : 0;
+            document.getElementById('winRate').textContent = winRate.toFixed(1) + '%';
+
+            // Total PnL
+            const totalPnl = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+            document.getElementById('totalPnl').textContent = '$' + totalPnl.toFixed(2);
+
+            // Best and worst trades
+            const pnlPcts = trades.map(t => t.pnl_pct || 0);
+            const bestTrade = Math.max(...pnlPcts);
+            const worstTrade = Math.min(...pnlPcts);
+            document.getElementById('bestTrade').textContent = (bestTrade >= 0 ? '+' : '') + bestTrade.toFixed(2) + '%';
+            document.getElementById('worstTrade').textContent = worstTrade.toFixed(2) + '%';
+
+            // Average win/loss
+            const avgWin = wins.length > 0 ? wins.reduce((sum, t) => sum + t.pnl_pct, 0) / wins.length : 0;
+            const avgLoss = losses.length > 0 ? losses.reduce((sum, t) => sum + t.pnl_pct, 0) / losses.length : 0;
+            document.getElementById('avgWin').textContent = '+' + avgWin.toFixed(2) + '%';
+            document.getElementById('avgLoss').textContent = avgLoss.toFixed(2) + '%';
+
+            // Profit factor
+            const grossProfit = wins.reduce((sum, t) => sum + t.pnl, 0);
+            const grossLoss = Math.abs(losses.reduce((sum, t) => sum + t.pnl, 0));
+            const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : 0;
+            document.getElementById('profitFactor').textContent = profitFactor.toFixed(2);
+
+            // Max drawdown (simplified - just worst trade for now)
+            const maxDD = Math.min(...pnlPcts);
+            document.getElementById('maxDrawdown').textContent = maxDD.toFixed(2) + '%';
+
+            // Win streak (simplified - count consecutive wins from end)
+            let winStreak = 0;
+            for (let i = trades.length - 1; i >= 0; i--) {
+                if (trades[i].pnl > 0) winStreak++;
+                else break;
+            }
+            document.getElementById('winStreak').textContent = winStreak;
         }
 
         // Update visible trade lines based on current time
