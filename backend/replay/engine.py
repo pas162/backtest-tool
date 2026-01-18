@@ -27,14 +27,21 @@ class Position:
     side: str  # "long" or "short"
     entry_price: float
     entry_time: datetime
-    size: float
+    size: float  # Position size in dollars
+    leverage: float = 1.0  # Leverage multiplier
     
     def pnl(self, current_price: float) -> float:
-        """Calculate unrealized PnL."""
+        """Calculate unrealized PnL in dollars."""
+        # Price change percentage
         if self.side == "long":
-            return (current_price - self.entry_price) / self.entry_price * 100 * self.size
+            price_change_pct = (current_price - self.entry_price) / self.entry_price
         else:
-            return (self.entry_price - current_price) / self.entry_price * 100 * self.size
+            price_change_pct = (self.entry_price - current_price) / self.entry_price
+        
+        # PnL = position_value * leverage * price_change_pct
+        position_value = self.size
+        pnl_dollars = position_value * self.leverage * price_change_pct
+        return pnl_dollars
 
 
 @dataclass
@@ -47,6 +54,7 @@ class Trade:
     exit_time: datetime
     pnl: float
     pnl_pct: float
+    fee: float = 0.0
 
 
 @dataclass
@@ -91,6 +99,7 @@ class ReplayEngine:
         initial_capital: float = 100.0,
         position_size: float = 10.0,
         commission: float = 0.001,
+        leverage: float = 1.0,
     ):
         """
         Initialize replay engine.
@@ -99,14 +108,16 @@ class ReplayEngine:
             data: OHLCV DataFrame with DatetimeIndex
             agent: TradingAgent instance
             initial_capital: Starting capital
-            position_size: Size per trade (as % of capital)
+            position_size: Size per trade in dollars
             commission: Commission rate (0.001 = 0.1%)
+            leverage: Leverage multiplier (1-100x)
         """
         self.data = data
         self.agent = agent
         self.initial_capital = initial_capital
         self.position_size = position_size
         self.commission = commission
+        self.leverage = leverage
         
         self.state = ReplayState(
             equity=initial_capital,
@@ -255,6 +266,7 @@ class ReplayEngine:
                     entry_price=price,
                     entry_time=time,
                     size=self.position_size,
+                    leverage=self.leverage,
                 )
             # Ignore BUY if already in a position (agent should CLOSE first)
         
@@ -266,6 +278,7 @@ class ReplayEngine:
                     entry_price=price,
                     entry_time=time,
                     size=self.position_size,
+                    leverage=self.leverage,
                 )
             # Ignore SELL if already in a position (agent should CLOSE first)
         
@@ -279,12 +292,15 @@ class ReplayEngine:
             return
         
         pos = self.state.position
-        pnl = pos.pnl(price)
-        pnl_pct = pnl / self.initial_capital * 100
+        pnl_dollars = pos.pnl(price)  # PnL in dollars
         
-        # Apply commission
-        commission_cost = self.commission * pos.size * 2  # Entry + exit
-        pnl -= commission_cost
+        # Apply commission (on leveraged position value)
+        leveraged_value = pos.size * pos.leverage
+        commission_cost = self.commission * leveraged_value * 2  # Entry + exit
+        pnl_dollars -= commission_cost
+        
+        # Calculate PnL percentage (relative to capital)
+        pnl_pct = (pnl_dollars / self.initial_capital) * 100
         
         trade = Trade(
             side=pos.side,
@@ -292,11 +308,12 @@ class ReplayEngine:
             exit_price=price,
             entry_time=pos.entry_time,
             exit_time=time,
-            pnl=pnl,
+            pnl=pnl_dollars,
             pnl_pct=pnl_pct,
+            fee=commission_cost,
         )
         self.state.trades.append(trade)
-        self.state.equity += pnl
+        self.state.equity += pnl_dollars
         
         if self._on_trade_callback:
             asyncio.create_task(self._on_trade_callback(trade))

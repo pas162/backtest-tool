@@ -1289,6 +1289,18 @@
 
                 if (!entryTs || !exitTs) return;  // Skip if no valid times
 
+                // Debug: Log first few trades to check marker positions
+                if (idx < 3) {
+                    console.log(`Marker ${idx}:`, {
+                        side: trade.side,
+                        entryPrice: trade.entry_price,
+                        exitPrice: trade.exit_price,
+                        entryTime: trade.entry_time,
+                        exitTime: trade.exit_time,
+                        pnl: trade.pnl_pct.toFixed(2) + '%'
+                    });
+                }
+
                 // Entry marker
                 markers.push({
                     time: entryTs,
@@ -1335,6 +1347,7 @@
 
         // Draw lines connecting entry to exit for each trade
         function renderTradeLines(trades) {
+            console.log('=== renderTradeLines called with', trades.length, 'trades ===');
             if (!chart || !trades || trades.length === 0) return;
 
             // Clear existing trade lines
@@ -1347,6 +1360,13 @@
                 candlePriceMap[c.time] = { open: c.open, high: c.high, low: c.low, close: c.close };
             });
 
+            // Debug: Show sample candle timestamps
+            console.log('Sample candle timestamps:', {
+                'first candle time': candles[0]?.time,
+                'last candle time': candles[candles.length - 1]?.time,
+                'total candles': candles.length
+            });
+
             trades.forEach((trade, idx) => {
                 const isProfit = trade.pnl > 0;
                 const isLong = trade.side === 'long';
@@ -1355,41 +1375,74 @@
                 let entryTs = parseTimeToUnix(trade.entry_time);
                 let exitTs = parseTimeToUnix(trade.exit_time);
 
+                console.log(`\nTrade ${idx} BEFORE findClosest:`, {
+                    entryTime: trade.entry_time,
+                    exitTime: trade.exit_time,
+                    entryTs,
+                    exitTs
+                });
+
                 // Find closest valid candle times
                 entryTs = findClosestCandleTime(entryTs, validTimes);
                 exitTs = findClosestCandleTime(exitTs, validTimes);
 
-                if (!entryTs || !exitTs) return;
+                console.log(`Trade ${idx} AFTER findClosest:`, {
+                    entryTs,
+                    exitTs,
+                    'entryTs in validTimes': validTimes.has(entryTs),
+                    'exitTs in validTimes': validTimes.has(exitTs)
+                });
+
+                if (!entryTs || !exitTs) {
+                    console.warn(`Trade ${idx} SKIPPED - missing timestamps`);
+                    return;
+                }
 
                 // Create a line series for this trade (dashed line)
                 const lineSeries = chart.addLineSeries({
                     color: lineColor,
-                    lineWidth: 1,
+                    lineWidth: 4,  // Increased to 4 for maximum visibility
                     lineStyle: LightweightCharts.LineStyle.Dashed,
                     crosshairMarkerVisible: false,
                     lastValueVisible: false,
                     priceLineVisible: false,
+                    priceScaleId: 'right',  // Same scale as candles
                 });
 
-
-                // Get actual candle prices at entry and exit times
+                // Draw horizontal line at entry price (position level)
+                // Use actual candle close prices for accurate positioning
                 const entryCandle = candlePriceMap[entryTs];
                 const exitCandle = candlePriceMap[exitTs];
 
-                if (!entryCandle || !exitCandle) return;
+                if (!entryCandle || !exitCandle) {
+                    console.warn(`Trade ${idx} SKIPPED - missing candle data`);
+                    return;
+                }
 
-                // Use candle close prices for visual accuracy
-                const entryPrice = entryCandle.close;
-                const exitPrice = exitCandle.close;
+                const entryPrice = entryCandle.close;  // Use candle close price
+                const exitPrice = exitCandle.close;    // Use candle close price
 
-                // Set data: entry point → exit point
+                // Set data: horizontal line at entry price from entry time to exit time
                 lineSeries.setData([
                     { time: entryTs, value: entryPrice },
-                    { time: exitTs, value: exitPrice }
+                    { time: exitTs, value: exitPrice }  // Use exit candle close price
                 ]);
 
                 tradeLines.push(lineSeries);
+
+                console.log(`Trade ${idx} LINE CREATED:`, {
+                    entryPrice,
+                    entryTs,
+                    exitTs,
+                    color: lineColor,
+                    'line data': [
+                        { time: entryTs, value: entryPrice },
+                        { time: exitTs, value: entryPrice }
+                    ]
+                });
             });
+
+            console.log('=== Total trade lines added:', tradeLines.length, '===\n');
         }
 
         // Clear all trade lines
@@ -1925,6 +1978,15 @@
                 const visibleCandles = candles.slice(0, currentBar + 1);
                 candleSeries.setData(visibleCandles);
 
+                // Update markers progressively - only show markers up to current time
+                const currentTime = candles[currentBar].time;
+                const visibleMarkers = markers.filter(m => m.time <= currentTime);
+                candleSeries.setMarkers(visibleMarkers);
+
+                // Update trade lines progressively
+                // TODO: Fix progressive line rendering - commented out for now
+                // updateVisibleTradeLines(currentTime);
+
                 // Update progress
                 currentBar++;
                 currentBarEl.textContent = currentBar;
@@ -1950,13 +2012,68 @@
             currentBarEl.textContent = '0';
             progressFill.style.width = '0%';
 
-            // Reset chart to show only first candle
-            if (candles && candles.length > 0) {
-                candleSeries.setData([candles[0]]);
+            // Reset chart to blank (no candles)
+            if (candleSeries) {
+                candleSeries.setData([]);
             }
+
+            // Clear all markers on reset
+            candleSeries.setMarkers([]);
+
+            // Clear trade lines
+            clearTradeLines();
 
             playBtn.disabled = false;
             resetBtn.disabled = false;
+        }
+
+        // Update visible trade lines based on current time
+        function updateVisibleTradeLines(currentTime) {
+            // Clear existing lines
+            clearTradeLines();
+
+            // Only show lines for trades that have started
+            if (!backendTrades || backendTrades.length === 0) return;
+
+            // Build valid times set for findClosestCandleTime
+            const validTimes = new Set(candles.map(c => c.time));
+
+            backendTrades.forEach(trade => {
+                let entryTs = parseTimeToUnix(trade.entry_time);
+                let exitTs = parseTimeToUnix(trade.exit_time);
+
+                // Find closest candle times (same as markers)
+                entryTs = findClosestCandleTime(entryTs, validTimes);
+                exitTs = findClosestCandleTime(exitTs, validTimes);
+
+                if (!entryTs || !exitTs) return;
+
+                // Only show line if trade has started
+                if (entryTs <= currentTime) {
+                    const isProfit = trade.pnl > 0;
+                    const lineColor = isProfit ? 'rgba(38, 166, 154, 0.7)' : 'rgba(239, 83, 80, 0.7)';
+
+                    const lineSeries = chart.addLineSeries({
+                        color: lineColor,
+                        lineWidth: 2,
+                        lineStyle: LightweightCharts.LineStyle.Dashed,
+                        crosshairMarkerVisible: false,
+                        lastValueVisible: false,
+                        priceLineVisible: false,
+                        priceScaleId: 'right',
+                    });
+
+                    const entryPrice = trade.entry_price;
+                    const endTime = Math.min(exitTs, currentTime);  // Line extends to current time or exit, whichever is earlier
+
+                    lineSeries.setData([
+                        { time: entryTs, value: entryPrice },
+                        { time: endTime, value: entryPrice }
+                    ]);
+
+                    tradeLines.push(lineSeries);
+                }
+            });
         }
 
         // Train ML Model (called from modal)

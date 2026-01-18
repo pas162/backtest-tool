@@ -32,6 +32,7 @@ class ReplayRequest(BaseModel):
     end_date: str
     initial_capital: float = 100.0
     position_size: float = 20.0
+    leverage: float = 1.0
     speed: float = 0  # 0 = instant, > 0 = bars per second
 
 
@@ -96,6 +97,7 @@ async def run_replay(request: ReplayRequest):
             agent=agent,
             initial_capital=request.initial_capital,
             position_size=request.position_size,
+            leverage=request.leverage,
         )
         
         # Run simulation
