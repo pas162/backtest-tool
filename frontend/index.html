@@ -1498,8 +1498,13 @@
             if (typeof timeValue === 'number') {
                 return timeValue;
             }
-            // ISO string
-            return Math.floor(new Date(timeValue).getTime() / 1000);
+            // ISO string - ensure it's treated as UTC
+            // If no 'Z' suffix, add it to force UTC parsing
+            let isoString = timeValue;
+            if (!isoString.endsWith('Z') && !isoString.includes('+')) {
+                isoString += 'Z';
+            }
+            return Math.floor(new Date(isoString).getTime() / 1000);
         }
 
         // Load data
@@ -1515,6 +1520,7 @@
                 initial_capital: parseFloat(document.getElementById('capital').value),
                 position_size: parseFloat(document.getElementById('positionSize').value) || 2,
                 leverage: parseFloat(document.getElementById('leverage').value) || 1,
+                commission: 0.001,  // 0.1% trading fee
                 speed: 0
             };
 
@@ -2220,35 +2226,39 @@
                 holdDuration = `${holdMinutes}m`;
             }
 
-            // Format times
-            const entryTimeStr = entryTime.toLocaleString('en-US', {
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-            const exitTimeStr = exitTime.toLocaleString('en-US', {
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+            // Format times in UTC to match chart
+            const formatUTC = (date) => {
+                const year = date.getUTCFullYear();
+                const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                const day = String(date.getUTCDate()).padStart(2, '0');
+                const hours = String(date.getUTCHours()).padStart(2, '0');
+                const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                return `${year}-${month}-${day} ${hours}:${minutes}`;
+            };
+
+            const entryTimeStr = formatUTC(entryTime);
+            const exitTimeStr = formatUTC(exitTime);
 
             const isProfit = trade.pnl > 0;
             const sideClass = trade.side === 'long' ? 'profit' : 'loss';
             const pnlClass = isProfit ? 'profit' : 'loss';
+            const rowBgColor = isProfit ? 'rgba(38, 166, 154, 0.1)' : 'rgba(239, 83, 80, 0.1)';
+
+            // Debug: Log price mismatch
+            console.log(`Trade entry: ${trade.entry_time}, price: ${trade.entry_price}`);
 
             const row = document.createElement('tr');
+            row.style.backgroundColor = rowBgColor;
             row.innerHTML = `
-                <td><span class="${sideClass}">${trade.side.toUpperCase()}</span></td>
-                <td>${entryTimeStr}</td>
-                <td>$${trade.entry_price.toFixed(4)}</td>
-                <td>${exitTimeStr}</td>
-                <td>$${trade.exit_price.toFixed(4)}</td>
-                <td>${holdDuration}</td>
-                <td class="${pnlClass}">${isProfit ? '+' : ''}${trade.pnl_pct.toFixed(2)}%</td>
-                <td class="${pnlClass}">${isProfit ? '+' : ''}$${trade.pnl.toFixed(2)}</td>
-                <td>$${(trade.fee || 0).toFixed(2)}</td>
+                <td><span class="${sideClass}" style="font-weight: bold;">${trade.side.toUpperCase()}</span></td>
+                <td style="color: #b2b5be;">${entryTimeStr}</td>
+                <td style="color: #b2b5be;">$${trade.entry_price.toFixed(5)}</td>
+                <td style="color: #b2b5be;">${exitTimeStr}</td>
+                <td style="color: #b2b5be;">$${trade.exit_price.toFixed(5)}</td>
+                <td style="color: #b2b5be;">${holdDuration}</td>
+                <td class="${pnlClass}" style="font-weight: bold;">${isProfit ? '+' : ''}${trade.pnl_pct.toFixed(2)}%</td>
+                <td class="${pnlClass}" style="font-weight: bold;">${isProfit ? '+' : ''}$${trade.pnl.toFixed(2)}</td>
+                <td style="color: ${trade.fee > 0 ? '#ef5350' : '#787b86'};">$${(trade.fee || 0).toFixed(2)}</td>
             `;
 
             tbody.appendChild(row);

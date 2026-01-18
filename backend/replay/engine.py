@@ -261,6 +261,8 @@ class ReplayEngine:
         if decision == Decision.BUY:
             # Only open LONG if flat (no position)
             if self.state.position is None:
+                # Debug: Print actual candle data at entry
+                print(f"🟢 LONG ENTRY at {time}: price={price}, candle_close={price}")
                 self.state.position = Position(
                     side="long",
                     entry_price=price,
@@ -273,6 +275,8 @@ class ReplayEngine:
         elif decision == Decision.SELL:
             # Only open SHORT if flat (no position)
             if self.state.position is None:
+                # Debug: Print actual candle data at entry
+                print(f"🔴 SHORT ENTRY at {time}: price={price}, candle_close={price}")
                 self.state.position = Position(
                     side="short",
                     entry_price=price,
