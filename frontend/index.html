@@ -1904,6 +1904,61 @@
             tbody.insertBefore(row, tbody.firstChild);
         }
 
+        // Replay animation functions
+        function play() {
+            if (!candles || candles.length === 0) {
+                alert('Please load data first');
+                return;
+            }
+
+            isPlaying = true;
+            playBtn.disabled = true;
+            pauseBtn.disabled = false;
+
+            playInterval = setInterval(() => {
+                if (currentBar >= candles.length) {
+                    pause();
+                    return;
+                }
+
+                // Update chart with one more candle
+                const visibleCandles = candles.slice(0, currentBar + 1);
+                candleSeries.setData(visibleCandles);
+
+                // Update progress
+                currentBar++;
+                currentBarEl.textContent = currentBar;
+                progressFill.style.width = (currentBar / candles.length * 100) + '%';
+
+            }, speed);
+        }
+
+        function pause() {
+            isPlaying = false;
+            playBtn.disabled = false;
+            pauseBtn.disabled = true;
+
+            if (playInterval) {
+                clearInterval(playInterval);
+                playInterval = null;
+            }
+        }
+
+        function reset() {
+            pause();
+            currentBar = 0;
+            currentBarEl.textContent = '0';
+            progressFill.style.width = '0%';
+
+            // Reset chart to show only first candle
+            if (candles && candles.length > 0) {
+                candleSeries.setData([candles[0]]);
+            }
+
+            playBtn.disabled = false;
+            resetBtn.disabled = false;
+        }
+
         // Train ML Model (called from modal)
         async function trainModel() {
             trainConfirmBtn.disabled = true;

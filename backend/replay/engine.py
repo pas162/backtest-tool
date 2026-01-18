@@ -161,6 +161,19 @@ class ReplayEngine:
             # Execute decision
             self._execute_decision(decision, current_price, current_time)
             
+            # Check for liquidation (stop if equity <= 0)
+            current_equity = self.state.equity
+            if self.state.position:
+                current_equity += self.state.position.pnl(current_price)
+            
+            if current_equity <= 0:
+                # Liquidated - close any open position and stop
+                if self.state.position:
+                    self._close_position(current_price, current_time)
+                print(f"[LIQUIDATED] Equity: ${current_equity:.2f} at {current_time}")
+                self._running = False
+                break
+            
             # Log decision
             log_entry = DecisionLog(
                 timestamp=current_time,
