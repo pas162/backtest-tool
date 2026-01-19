@@ -45,8 +45,9 @@ class ModelTrainer:
         symbol: str = "XRPUSDT",
         timeframe: str = "5m",
         days: int = 90,
-        lookahead: int = 5,
+        lookahead: int = 10,
         threshold: float = 0.002,
+        use_multi_class: bool = True,  # NEW: Use multi-class labels
     ) -> Tuple[pd.DataFrame, pd.Series]:
         """
         Fetch and prepare training data.
@@ -56,7 +57,8 @@ class ModelTrainer:
             timeframe: Candle timeframe
             days: Days of historical data
             lookahead: Bars to look ahead for labels
-            threshold: Min price change threshold
+            threshold: Min price change threshold (for binary labels)
+            use_multi_class: If True, use 3-class labels (HOLD/LONG/SHORT)
         
         Returns:
             Tuple of (features DataFrame, labels Series)
@@ -94,7 +96,19 @@ class ModelTrainer:
         
         # Create labels
         print("Creating labels...")
-        labels = self.feature_engineer.create_labels(df, lookahead=lookahead, threshold=threshold)
+        if use_multi_class:
+            labels = self.feature_engineer.create_multi_class_labels(
+                df,
+                lookahead=lookahead
+            )
+            print(f"Using MULTI-CLASS labels (0=HOLD, 1=LONG, 2=SHORT)")
+        else:
+            labels = self.feature_engineer.create_labels(
+                df,
+                lookahead=lookahead,
+                threshold=threshold
+            )
+            print(f"Using BINARY labels (0=DOWN, 1=UP)")
         
         # Remove rows without valid labels (last lookahead rows)
         valid_mask = labels.notna()
@@ -102,7 +116,17 @@ class ModelTrainer:
         labels = labels[valid_mask]
         
         print(f"Prepared {len(features)} samples")
-        print(f"Label distribution: Up={labels.sum()} ({labels.mean()*100:.1f}%), Down={len(labels)-labels.sum()}")
+        
+        if use_multi_class:
+            # Show distribution for multi-class
+            label_counts = labels.value_counts().sort_index()
+            print(f"Label distribution:")
+            print(f"  HOLD (0):  {label_counts.get(0, 0)} ({label_counts.get(0, 0)/len(labels)*100:.1f}%)")
+            print(f"  LONG (1):  {label_counts.get(1, 0)} ({label_counts.get(1, 0)/len(labels)*100:.1f}%)")
+            print(f"  SHORT (2): {label_counts.get(2, 0)} ({label_counts.get(2, 0)/len(labels)*100:.1f}%)")
+        else:
+            # Show distribution for binary
+            print(f"Label distribution: Up={labels.sum()} ({labels.mean()*100:.1f}%), Down={len(labels)-labels.sum()}")
         
         return features, labels
     
@@ -129,32 +153,51 @@ class ModelTrainer:
         """
         print(f"\nTraining model (type={model_type})...")
         
+        # Check if labels are multi-class (0, 1, 2) or binary (0, 1)
+        num_classes = len(y.unique())
+        is_multi_class = num_classes > 2
+        
+        print(f"Number of classes: {num_classes}")
+        print(f"Classification type: {'MULTI-CLASS' if is_multi_class else 'BINARY'}")
+        
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=random_state, shuffle=False
         )
         
         print(f"Train size: {len(X_train)}, Test size: {len(X_test)}")
-        
+       
         # Select model
         if model_type == "auto":
             model_type = "xgboost" if HAS_XGBOOST else "randomforest"
         
         if model_type == "xgboost" and HAS_XGBOOST:
-            self.model = xgb.XGBClassifier(
-                n_estimators=100,
-                max_depth=5,
-                learning_rate=0.1,
-                random_state=random_state,
-                eval_metric='logloss',
-            )
+            if is_multi_class:
+                self.model = xgb.XGBClassifier(
+                    objective='multi:softmax',
+                    num_class=num_classes,
+                    n_estimators=150,
+                    max_depth=6,
+                    learning_rate=0.1,
+                    random_state=random_state,
+                    eval_metric='mlogloss',
+                )
+            else:
+                self.model = xgb.XGBClassifier(
+                    n_estimators=100,
+                    max_depth=5,
+                    learning_rate=0.1,
+                    random_state=random_state,
+                    eval_metric='logloss',
+                )
             self.model_type = "xgboost"
         else:
             self.model = RandomForestClassifier(
-                n_estimators=100,
-                max_depth=10,
+                n_estimators=150,
+                max_depth=12,
                 random_state=random_state,
                 n_jobs=-1,
+                class_weight='balanced',  # Handle class imbalance
             )
             self.model_type = "randomforest"
         
@@ -165,23 +208,37 @@ class ModelTrainer:
         
         # Evaluate
         y_pred = self.model.predict(X_test)
-        y_prob = self.model.predict_proba(X_test)[:, 1]
+        y_prob = self.model.predict_proba(X_test)
         
         metrics = {
             "model_type": self.model_type,
+            "num_classes": num_classes,
             "train_size": len(X_train),
             "test_size": len(X_test),
             "accuracy": accuracy_score(y_test, y_pred),
-            "precision": precision_score(y_test, y_pred, zero_division=0),
-            "recall": recall_score(y_test, y_pred, zero_division=0),
-            "f1": f1_score(y_test, y_pred, zero_division=0),
         }
+        
+        # Calculate precision/recall/f1
+        if is_multi_class:
+            metrics["precision"] = precision_score(y_test, y_pred, average='weighted', zero_division=0)
+            metrics["recall"] = recall_score(y_test, y_pred, average='weighted', zero_division=0)
+            metrics["f1"] = f1_score(y_test, y_pred, average='weighted', zero_division=0)
+        else:
+            metrics["precision"] = precision_score(y_test, y_pred, zero_division=0)
+            metrics["recall"] = recall_score(y_test, y_pred, zero_division=0)
+            metrics["f1"] = f1_score(y_test, y_pred, zero_division=0)
         
         print(f"\n📊 Results:")
         print(f"  Accuracy:  {metrics['accuracy']:.4f}")
         print(f"  Precision: {metrics['precision']:.4f}")
         print(f"  Recall:    {metrics['recall']:.4f}")
         print(f"  F1 Score:  {metrics['f1']:.4f}")
+        
+        # Show per-class metrics for multi-class
+        if is_multi_class:
+            print(f"\n📈 Per-Class Metrics:")
+            class_names = ['HOLD', 'LONG', 'SHORT'] if num_classes == 3 else [f'Class_{i}' for i in range(num_classes)]
+            print(classification_report(y_test, y_pred, target_names=class_names, zero_division=0))
         
         # Feature importance
         if hasattr(self.model, 'feature_importances_'):
@@ -227,20 +284,20 @@ async def train_model_cli():
     """CLI for training model."""
     trainer = ModelTrainer()
     
-    # Prepare data
+    # Prepare data with MULTI-CLASS labels
     X, y = await trainer.prepare_data(
         symbol="XRPUSDT",
         timeframe="5m",
         days=90,
-        lookahead=5,
-        threshold=0.002,
+        lookahead=10,          # Look ahead 10 bars (~50 minutes for 5m)
+        use_multi_class=True,  # Use 3-class labels
     )
     
     # Train
     metrics = trainer.train(X, y)
     
     # Save
-    trainer.save_model("xrp_5m_model")
+    trainer.save_model("xrp_5m_model_multiclass")
     
     return metrics
 

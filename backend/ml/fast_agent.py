@@ -129,47 +129,107 @@ class FastMLAgent(TradingAgent):
             return Decision.HOLD
         
         # Get pre-calculated prediction (INSTANT!)
-        prob = self._all_predictions[bar_position]
-        prob_up = prob[1]
+        probs = self._all_predictions[bar_position]
         
-        # Decision logic with proper position management
-        # If we have a position, check if we should close it
-        if self._position is not None:
-            # Close LONG if probability drops below neutral zone
-            if self._position == "long" and prob_up < 0.5:
-                self._last_reasoning = f"CLOSE LONG: prob_up={prob_up:.2f} (reversal)"
-                self._position = None
-                return Decision.CLOSE
+        # Check if model is multi-class (3+ classes) or binary (2 classes)
+        num_classes = probs.shape[0]
+        is_multi_class = num_classes >= 3
+        
+        if is_multi_class:
+            # MULTI-CLASS: [prob_hold, prob_long, prob_short, ...]
+            # Get action with highest probability
+            action_idx = np.argmax(probs)
+            confidence = probs[action_idx]
             
-            # Close SHORT if probability rises above neutral zone
-            elif self._position == "short" and prob_up > 0.5:
-                self._last_reasoning = f"CLOSE SHORT: prob_up={prob_up:.2f} (reversal)"
-                self._position = None
-                return Decision.CLOSE
+            # Minimum confidence threshold
+            min_confidence = 0.40  # 40% confidence required
             
-            # Hold position if still in favorable zone
-            else:
-                self._last_reasoning = f"HOLD {self._position.upper()}: prob_up={prob_up:.2f}"
+            if confidence < min_confidence:
+                self._last_reasoning = f"Low confidence: max_prob={confidence:.2f} < {min_confidence}"
                 return Decision.HOLD
-        
-        # If flat, check if we should open a position
+            
+            # Map prediction to action
+            if action_idx == 0:  # HOLD
+                self._last_reasoning = f"HOLD predicted: prob={confidence:.2f}"
+                return Decision.HOLD
+                
+            elif action_idx == 1:  # LONG
+                if self._position is None:
+                    self._last_reasoning = f"OPEN LONG: prob={confidence:.2f}"
+                    self._position = "long"
+                    return Decision.BUY
+                elif self._position == "short":
+                    # Close short before going long
+                    self._last_reasoning = f"CLOSE SHORT (reversal): prob_long={confidence:.2f}"
+                    self._position = None
+                    return Decision.CLOSE
+                else:
+                    # Already long, hold
+                    self._last_reasoning = f"HOLD LONG: prob={confidence:.2f}"
+                    return Decision.HOLD
+                    
+            elif action_idx == 2:  # SHORT
+                if self._position is None:
+                    self._last_reasoning = f"OPEN SHORT: prob={confidence:.2f}"
+                    self._position = "short"
+                    return Decision.SELL
+                elif self._position == "long":
+                    # Close long before going short
+                    self._last_reasoning = f"CLOSE LONG (reversal): prob_short={confidence:.2f}"
+                    self._position = None
+                    return Decision.CLOSE
+                else:
+                    # Already short, hold
+                    self._last_reasoning = f"HOLD SHORT: prob={confidence:.2f}"
+                    return Decision.HOLD
+                    
+            else:
+                # Unknown class (shouldn't happen)
+                self._last_reasoning = f"Unknown class: {action_idx}"
+                return Decision.HOLD
+                
         else:
-            # Open LONG if strong bullish signal
-            if prob_up >= self.buy_threshold:
-                self._last_reasoning = f"OPEN LONG: prob_up={prob_up:.2f}"
-                self._position = "long"
-                return Decision.BUY
+            # BINARY: [prob_down, prob_up] - Legacy mode
+            prob_up = probs[1]
             
-            # Open SHORT if strong bearish signal
-            elif prob_up <= self.sell_threshold:
-                self._last_reasoning = f"OPEN SHORT: prob_up={prob_up:.2f}"
-                self._position = "short"
-                return Decision.SELL
+            # Decision logic with proper position management
+            # If we have a position, check if we should close it
+            if self._position is not None:
+                # Close LONG if probability drops below neutral zone
+                if self._position == "long" and prob_up < 0.5:
+                    self._last_reasoning = f"CLOSE LONG: prob_up={prob_up:.2f} (reversal)"
+                    self._position = None
+                    return Decision.CLOSE
+                
+                # Close SHORT if probability rises above neutral zone
+                elif self._position == "short" and prob_up > 0.5:
+                    self._last_reasoning = f"CLOSE SHORT: prob_up={prob_up:.2f} (reversal)"
+                    self._position = None
+                    return Decision.CLOSE
+                
+                # Hold position if still in favorable zone
+                else:
+                    self._last_reasoning = f"HOLD {self._position.upper()}: prob_up={prob_up:.2f}"
+                    return Decision.HOLD
             
-            # Stay flat if no strong signal
+            # If flat, check if we should open a position
             else:
-                self._last_reasoning = f"FLAT: prob_up={prob_up:.2f} (neutral)"
-                return Decision.HOLD
+                # Open LONG if strong bullish signal
+                if prob_up >= self.buy_threshold:
+                    self._last_reasoning = f"OPEN LONG: prob_up={prob_up:.2f}"
+                    self._position = "long"
+                    return Decision.BUY
+                
+                # Open SHORT if strong bearish signal
+                elif prob_up <= self.sell_threshold:
+                    self._last_reasoning = f"OPEN SHORT: prob_up={prob_up:.2f}"
+                    self._position = "short"
+                    return Decision.SELL
+                
+                # Stay flat if no strong signal
+                else:
+                    self._last_reasoning = f"FLAT: prob_up={prob_up:.2f} (neutral)"
+                    return Decision.HOLD
     
     @property
     def is_model_loaded(self) -> bool:

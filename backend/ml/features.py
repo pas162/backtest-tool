@@ -250,6 +250,98 @@ class FeatureEngineer:
         
         return labels
     
+    def create_multi_class_labels(
+        self,
+        data: pd.DataFrame,
+        lookahead: int = 10,
+        profit_target: float = 0.015,  # 1.5% profit target
+        stop_loss: float = 0.008,      # 0.8% stop loss
+        min_confidence: float = 0.008, # 0.8% minimum move to be confident
+    ) -> pd.Series:
+        """
+        Create multi-class labels for entry AND exit prediction.
+        
+        Labels:
+            0 = HOLD (no clear signal, neutral zone)
+            1 = LONG (bullish entry signal)
+            2 = SHORT (bearish entry signal)
+            3 = CLOSE (exit signal - currently not used in simple version)
+        
+        Args:
+            data: DataFrame with OHLC columns
+            lookahead: Bars to look ahead for outcome
+            profit_target: Profit target as fraction (0.015 = 1.5%)
+            stop_loss: Stop loss as fraction (0.008 = 0.8%)
+            min_confidence: Minimum price movement to be confident
+        
+        Returns:
+            Series with class labels (0-3)
+        """
+        df = data.copy()
+        df.columns = [c.capitalize() for c in df.columns]
+        
+        close = df['Close']
+        high = df['High']
+        low = df['Low']
+        
+        # Calculate ATR for dynamic targets
+        atr = self._calculate_atr(high, low, close, 14)
+        
+        # Use ATR-based targets (more adaptive to volatility)
+        atr_profit_target = atr * 2.0  # Target = 2x ATR
+        atr_stop_loss = atr * 1.0      # Stop = 1x ATR
+        
+        # Calculate forward price movement over lookahead period
+        future_high = high.shift(-1).rolling(lookahead).max()
+        future_low = low.shift(-1).rolling(lookahead).min()
+        
+        # Calculate potential outcomes for LONG and SHORT
+        # LONG: Buy at close, sell at future_high (best case) or future_low (worst case)
+        long_profit = (future_high - close) / close
+        long_loss = (close - future_low) / close
+        
+        # SHORT: Sell at close, buy back at future_low (best case) or future_high (worst case)
+        short_profit = (close - future_low) / close
+        short_loss = (future_high - close) / close
+        
+        # Initialize labels as HOLD (0)
+        labels = pd.Series(0, index=df.index, dtype=int)
+        
+        # LONG signal: If LONG has better risk/reward than SHORT
+        long_rr = long_profit / (long_loss + 0.001)  # Risk/reward ratio
+        short_rr = short_profit / (short_loss + 0.001)
+        
+        # Dynamic profit target based on ATR
+        profit_threshold = atr_profit_target / close
+        
+        # Label LONG (1) if:
+        # 1. Long profit > profit target
+        # 2. Long risk/reward > 1.5
+        # 3. Long profit > short profit (directional bias)
+        long_mask = (
+            (long_profit > profit_threshold) &
+            (long_rr > 1.5) &
+            (long_profit > short_profit + min_confidence)
+        )
+        labels[long_mask] = 1
+        
+        # Label SHORT (2) if:
+        # 1. Short profit > profit target
+        # 2. Short risk/reward > 1.5  
+        # 3. Short profit > long profit (directional bias)
+        short_mask = (
+            (short_profit > profit_threshold) &
+            (short_rr > 1.5) &
+            (short_profit > long_profit + min_confidence)
+        )
+        labels[short_mask] = 2
+        
+        # NOTE: CLOSE (3) label not implemented in this version
+        # Future: Can add CLOSE labels based on position context
+        # For now, model uses HOLD/LONG/SHORT only (3-class)
+        
+        return labels
+    
     def _calculate_atr(self, high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
         """Calculate ATR."""
         tr1 = high - low
