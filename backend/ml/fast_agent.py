@@ -93,13 +93,33 @@ class FastMLAgent(TradingAgent):
         self._all_predictions = self.model.predict_proba(features)
         
         # Debug: show prediction distribution
-        prob_ups = self._all_predictions[:, 1]
-        buy_signals = (prob_ups >= self.buy_threshold).sum()
-        sell_signals = (prob_ups <= self.sell_threshold).sum()
-        print(f"Pre-calculation complete: {len(self._all_predictions)} predictions ready")
-        print(f"  - BUY signals (prob >= {self.buy_threshold}): {buy_signals}")
-        print(f"  - SELL signals (prob <= {self.sell_threshold}): {sell_signals}")
-        print(f"  - Prob range: {prob_ups.min():.3f} - {prob_ups.max():.3f}")
+        num_classes = self._all_predictions.shape[1]
+        
+        if num_classes >= 3:
+            # Multi-class model
+            pred_classes = np.argmax(self._all_predictions, axis=1)
+            hold_count = (pred_classes == 0).sum()
+            long_count = (pred_classes == 1).sum()
+            short_count = (pred_classes == 2).sum()
+            close_count = (pred_classes == 3).sum() if num_classes >= 4 else 0
+            
+            print(f"Pre-calculation complete: {len(self._all_predictions)} predictions ready")
+            print(f"  Model type: MULTI-CLASS ({num_classes} classes)")
+            print(f"  - HOLD signals:  {hold_count} ({hold_count/len(pred_classes)*100:.1f}%)")
+            print(f"  - LONG signals:  {long_count} ({long_count/len(pred_classes)*100:.1f}%)")
+            print(f"  - SHORT signals: {short_count} ({short_count/len(pred_classes)*100:.1f}%)")
+            if num_classes >= 4:
+                print(f"  - CLOSE signals: {close_count} ({close_count/len(pred_classes)*100:.1f}%)")
+        else:
+            # Binary model (legacy)
+            prob_ups = self._all_predictions[:, 1]
+            buy_signals = (prob_ups >= self.buy_threshold).sum()
+            sell_signals = (prob_ups <= self.sell_threshold).sum()
+            print(f"Pre-calculation complete: {len(self._all_predictions)} predictions ready")
+            print(f"  Model type: BINARY")
+            print(f"  - BUY signals (prob >= {self.buy_threshold}): {buy_signals}")
+            print(f"  - SELL signals (prob <= {self.sell_threshold}): {sell_signals}")
+            print(f"  - Prob range: {prob_ups.min():.3f} - {prob_ups.max():.3f}")
         
         self._current_bar_index = 0
     
@@ -181,6 +201,16 @@ class FastMLAgent(TradingAgent):
                 else:
                     # Already short, hold
                     self._last_reasoning = f"HOLD SHORT: prob={confidence:.2f}"
+                    return Decision.HOLD
+                    
+            elif action_idx == 3:  # CLOSE - Model predicts exit
+                if self._position is not None:
+                    self._last_reasoning = f"CLOSE POSITION: prob={confidence:.2f} (exit signal)"
+                    self._position = None
+                    return Decision.CLOSE
+                else:
+                    # No position to close, treat as HOLD
+                    self._last_reasoning = f"NO POSITION to close: prob={confidence:.2f}"
                     return Decision.HOLD
                     
             else:

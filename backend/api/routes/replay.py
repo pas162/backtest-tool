@@ -140,8 +140,9 @@ class TrainRequest(BaseModel):
     symbol: str = "XRPUSDT"
     timeframe: str = "5m"
     days: int = 90
-    lookahead: int = 5
-    threshold: float = 0.002
+    lookahead: int = 10  # Increased default for better predictions
+    threshold: float = 0.008  # Increased to reduce noise
+    use_multi_class: bool = True  # Use multi-class (HOLD/LONG/SHORT) labels
     model_name: str = ""  # Custom model name (auto-generated if empty)
 
 
@@ -169,6 +170,7 @@ async def train_ml_model(request: TrainRequest):
             days=request.days,
             lookahead=request.lookahead,
             threshold=request.threshold,
+            use_multi_class=request.use_multi_class,
         )
         
         # Train model
@@ -188,12 +190,21 @@ async def train_ml_model(request: TrainRequest):
         prec_pct = metrics.get("precision", 0) * 100
         recall_pct = metrics.get("recall", 0) * 100
         threshold_pct = request.threshold * 100
+        num_classes = metrics.get("num_classes", 2)
         
-        description = (
-            f"Trained on {request.symbol} {request.timeframe} with {request.days} days data. "
-            f"Lookahead: {request.lookahead} bars, Threshold: {threshold_pct:.1f}%. "
-            f"Results: Acc={acc_pct:.1f}%, Prec={prec_pct:.1f}%, Recall={recall_pct:.1f}%"
-        )
+        if request.use_multi_class and num_classes >= 3:
+            model_type = f"{num_classes}-class (HOLD/LONG/SHORT)"
+            description = (
+                f"Trained on {request.symbol} {request.timeframe} with {request.days} days data. "
+                f"Multi-class model: {model_type}. Lookahead: {request.lookahead} bars. "
+                f"Results: Acc={acc_pct:.1f}%, Prec={prec_pct:.1f}%, Recall={recall_pct:.1f}%"
+            )
+        else:
+            description = (
+                f"Trained on {request.symbol} {request.timeframe} with {request.days} days data. "
+                f"Lookahead: {request.lookahead} bars, Threshold: {threshold_pct:.1f}%. "
+                f"Results: Acc={acc_pct:.1f}%, Prec={prec_pct:.1f}%, Recall={recall_pct:.1f}%"
+            )
         
         # Register model
         model_info = registry.register_model(
@@ -206,6 +217,7 @@ async def train_ml_model(request: TrainRequest):
                 "days": request.days,
                 "lookahead": request.lookahead,
                 "threshold": request.threshold,
+                "use_multi_class": request.use_multi_class,
             },
             description=description,
         )

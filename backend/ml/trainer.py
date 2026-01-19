@@ -120,10 +120,13 @@ class ModelTrainer:
         if use_multi_class:
             # Show distribution for multi-class
             label_counts = labels.value_counts().sort_index()
-            print(f"Label distribution:")
+            num_classes = len(label_counts)
+            print(f"Label distribution ({num_classes} classes):")
             print(f"  HOLD (0):  {label_counts.get(0, 0)} ({label_counts.get(0, 0)/len(labels)*100:.1f}%)")
             print(f"  LONG (1):  {label_counts.get(1, 0)} ({label_counts.get(1, 0)/len(labels)*100:.1f}%)")
             print(f"  SHORT (2): {label_counts.get(2, 0)} ({label_counts.get(2, 0)/len(labels)*100:.1f}%)")
+            if label_counts.get(3, 0) > 0:
+                print(f"  CLOSE (3): {label_counts.get(3, 0)} ({label_counts.get(3, 0)/len(labels)*100:.1f}%)")
         else:
             # Show distribution for binary
             print(f"Label distribution: Up={labels.sum()} ({labels.mean()*100:.1f}%), Down={len(labels)-labels.sum()}")
@@ -237,7 +240,12 @@ class ModelTrainer:
         # Show per-class metrics for multi-class
         if is_multi_class:
             print(f"\n📈 Per-Class Metrics:")
-            class_names = ['HOLD', 'LONG', 'SHORT'] if num_classes == 3 else [f'Class_{i}' for i in range(num_classes)]
+            if num_classes == 3:
+                class_names = ['HOLD', 'LONG', 'SHORT']
+            elif num_classes == 4:
+                class_names = ['HOLD', 'LONG', 'SHORT', 'CLOSE']
+            else:
+                class_names = [f'Class_{i}' for i in range(num_classes)]
             print(classification_report(y_test, y_pred, target_names=class_names, zero_division=0))
         
         # Feature importance

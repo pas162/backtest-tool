@@ -254,23 +254,23 @@ class FeatureEngineer:
         self,
         data: pd.DataFrame,
         lookahead: int = 10,
-        profit_target: float = 0.015,  # 1.5% profit target
+        profit_target: float = 0.012,  # 1.2% profit target
         stop_loss: float = 0.008,      # 0.8% stop loss
-        min_confidence: float = 0.008, # 0.8% minimum move to be confident
+        min_confidence: float = 0.005, # 0.5% minimum move
     ) -> pd.Series:
         """
-        Create multi-class labels for entry AND exit prediction.
+        Create 4-class labels for entry AND exit prediction.
         
         Labels:
             0 = HOLD (no clear signal, neutral zone)
             1 = LONG (bullish entry signal)
             2 = SHORT (bearish entry signal)
-            3 = CLOSE (exit signal - currently not used in simple version)
+            3 = CLOSE (exit signal - take profit or cut loss)
         
         Args:
             data: DataFrame with OHLC columns
             lookahead: Bars to look ahead for outcome
-            profit_target: Profit target as fraction (0.015 = 1.5%)
+            profit_target: Profit target as fraction (0.012 = 1.2%)
             stop_loss: Stop loss as fraction (0.008 = 0.8%)
             min_confidence: Minimum price movement to be confident
         
@@ -288,7 +288,7 @@ class FeatureEngineer:
         atr = self._calculate_atr(high, low, close, 14)
         
         # Use ATR-based targets (more adaptive to volatility)
-        atr_profit_target = atr * 2.0  # Target = 2x ATR
+        atr_profit_target = atr * 1.5  # Target = 1.5x ATR
         atr_stop_loss = atr * 1.0      # Stop = 1x ATR
         
         # Calculate forward price movement over lookahead period
@@ -296,11 +296,8 @@ class FeatureEngineer:
         future_low = low.shift(-1).rolling(lookahead).min()
         
         # Calculate potential outcomes for LONG and SHORT
-        # LONG: Buy at close, sell at future_high (best case) or future_low (worst case)
         long_profit = (future_high - close) / close
         long_loss = (close - future_low) / close
-        
-        # SHORT: Sell at close, buy back at future_low (best case) or future_high (worst case)
         short_profit = (close - future_low) / close
         short_loss = (future_high - close) / close
         
@@ -308,37 +305,65 @@ class FeatureEngineer:
         labels = pd.Series(0, index=df.index, dtype=int)
         
         # LONG signal: If LONG has better risk/reward than SHORT
-        long_rr = long_profit / (long_loss + 0.001)  # Risk/reward ratio
+        long_rr = long_profit / (long_loss + 0.001)
         short_rr = short_profit / (short_loss + 0.001)
         
         # Dynamic profit target based on ATR
         profit_threshold = atr_profit_target / close
         
-        # Label LONG (1) if:
-        # 1. Long profit > profit target
-        # 2. Long risk/reward > 1.5
-        # 3. Long profit > short profit (directional bias)
+        # === CLOSE SIGNAL DETECTION (Before Entry Signals) ===
+        # CLOSE signal: Price made significant move and about to reverse
+        
+        # Recent price change (momentum)
+        price_change_5 = close.pct_change(5)  # 5-bar momentum
+        price_change_10 = close.pct_change(10)  # 10-bar momentum
+        
+        # Future reversal detection
+        # For LONG positions: price went up, but will come down
+        long_made_profit = price_change_5 > 0.005  # Up 0.5% recently
+        long_will_reverse = (close - future_low) / close > 0.008  # Will drop 0.8%+
+        
+        # For SHORT positions: price went down, but will come up
+        short_made_profit = price_change_5 < -0.005  # Down 0.5% recently
+        short_will_reverse = (future_high - close) / close > 0.008  # Will rise 0.8%+
+        
+        # Overbought/Oversold detection (simple version using price position)
+        rolling_high = high.rolling(20).max()
+        rolling_low = low.rolling(20).min()
+        price_position = (close - rolling_low) / (rolling_high - rolling_low + 0.0001)
+        
+        overbought = price_position > 0.85  # Near 20-bar high
+        oversold = price_position < 0.15    # Near 20-bar low
+        
+        # Label CLOSE (3): When should exit position
+        close_mask = (
+            # Scenario 1: Long position made profit but will reverse
+            ((long_made_profit & long_will_reverse & overbought) |
+            # Scenario 2: Short position made profit but will reverse
+            (short_made_profit & short_will_reverse & oversold) |
+            # Scenario 3: Momentum exhaustion (big move, about to reverse)
+            ((abs(price_change_10) > 0.02) & (abs(price_change_5) < 0.002)))
+        )
+        labels[close_mask] = 3
+        
+        # === ENTRY SIGNALS ===
+        # Label LONG (1) only where NOT already labeled CLOSE
         long_mask = (
             (long_profit > profit_threshold) &
-            (long_rr > 1.5) &
-            (long_profit > short_profit + min_confidence)
+            (long_rr > 1.2) &
+            (long_profit > short_profit + min_confidence) &
+            (labels != 3)  # Don't override CLOSE
         )
         labels[long_mask] = 1
         
-        # Label SHORT (2) if:
-        # 1. Short profit > profit target
-        # 2. Short risk/reward > 1.5  
-        # 3. Short profit > long profit (directional bias)
+        # Label SHORT (2) only where NOT already labeled CLOSE
         short_mask = (
             (short_profit > profit_threshold) &
-            (short_rr > 1.5) &
-            (short_profit > long_profit + min_confidence)
+            (short_rr > 1.2) &
+            (short_profit > long_profit + min_confidence) &
+            (labels != 3)  # Don't override CLOSE
         )
         labels[short_mask] = 2
-        
-        # NOTE: CLOSE (3) label not implemented in this version
-        # Future: Can add CLOSE labels based on position context
-        # For now, model uses HOLD/LONG/SHORT only (3-class)
         
         return labels
     
